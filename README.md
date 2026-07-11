@@ -32,6 +32,10 @@ Headless board run (KiCad's Python, from the repo root):
 <kicad-python> -m kicad_plugin path/to/board.kicad_pcb
 ```
 
+Both routes keep wire numbers stable across re-exports via `wire_numbers.json`
+(written next to the board / netlist — commit it with the design). CLI:
+`--numbers PATH` to relocate it, `--no-persist` to disable.
+
 ## Install
 
 ```

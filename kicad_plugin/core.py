@@ -10,6 +10,7 @@ from harness.specs import SpecStore
 from harness.engine import build_harness
 from harness.numbering import SCHEMES
 from harness.emit import write_csv
+from harness.persist import WireNumberStore, collect_numbers, WIRE_NUMBERS_NAME
 
 DEFAULT_SPECS_NAME = "harness_specs.yaml"  # looked for next to the board
 
@@ -54,12 +55,21 @@ def generate_harness_docs(board, *, pcbnew_module=None, specs_path=None,
         except Exception as e:  # e.g. PyYAML absent, or malformed file
             res.warnings.append(f"specs '{os.path.basename(specs_path)}' not loaded: {e}")
 
-    # 3) build (numbering scheme can be set via "numbering:" in the spec file)
+    # 3) build (numbering scheme can be set via "numbering:" in the spec file).
+    #    Wire numbers persist in <board_dir>/wire_numbers.json so they stay
+    #    attached to the same wire across re-exports; commit it with the board.
     scheme = (getattr(specs, "numbering", "") or "global")
     numberer = SCHEMES.get(scheme, SCHEMES["global"])()
-    harness, warns = build_harness(conn, specs, numberer=numberer)
+    store = WireNumberStore(os.path.join(out_dir, WIRE_NUMBERS_NAME))
+    harness, warns = build_harness(conn, specs, numberer=numberer,
+                                   known_numbers=store.load())
     res.warnings.extend(warns)
     res.wire_count = len(harness.wires)
+    store.save(collect_numbers(harness))
+    if store.warning:
+        res.warnings.append(store.warning)
+    else:
+        res.outputs.append(store.path)
 
     # 4) outputs, written next to the board
     csv_path = os.path.join(out_dir, f"{stem}_wirelist.csv")

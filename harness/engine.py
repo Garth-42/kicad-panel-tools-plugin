@@ -20,6 +20,7 @@ from .model import Connectivity, Harness, Wire, WireSpec
 from .specs import SpecStore
 from .numbering import WireNumberer, GlobalSequence
 from .cables import parse_cable_ref
+from .persist import wire_key
 
 
 def _set_fields(spec: WireSpec, fields: dict, override: bool) -> None:
@@ -86,12 +87,17 @@ def _resolve_spec(net, specs: SpecStore) -> WireSpec:
 
 def build_harness(conn: Connectivity, specs: SpecStore,
                   auto_number: bool = True,
-                  numberer: WireNumberer | None = None) -> tuple[Harness, list[str]]:
+                  numberer: WireNumberer | None = None,
+                  known_numbers: dict | None = None) -> tuple[Harness, list[str]]:
     """Return (harness, warnings).
 
-    Numbering: specs-supplied wire numbers always win. For wires without one,
-    `numberer` fills them in (defaults to GlobalSequence). Set auto_number=False
-    to leave them blank.
+    Numbering: specs-supplied wire numbers always win; `known_numbers`
+    ({wire_key: wire_no}, from a persisted store — see persist.py) re-applies
+    previous runs' numbers next. For wires still without one, `numberer` fills
+    them in (defaults to GlobalSequence), never reusing a number already taken.
+    Assignment iterates wires in a sorted order so fresh numbers don't depend
+    on the ingest source's net iteration order. Set auto_number=False to leave
+    unnumbered wires blank.
     """
     warnings: list[str] = []
     wires: list[Wire] = []
@@ -104,10 +110,14 @@ def build_harness(conn: Connectivity, specs: SpecStore,
             warnings.append(f"net {net.name!r} has <2 endpoints; skipped")
             continue
 
-        # 2 nodes -> one wire. >2 -> star from node[0] (v1 simplification).
-        pairs = ([(nodes[0], nodes[1])] if len(nodes) == 2
-                 else [(nodes[0], n) for n in nodes[1:]])
-        if len(nodes) > 2:
+        # 2 nodes -> one wire. >2 -> star from node[0] (v1 simplification);
+        # nodes are sorted first so the hub (and each leg's persistence key)
+        # doesn't depend on the ingest source's pad iteration order.
+        if len(nodes) == 2:
+            pairs = [(nodes[0], nodes[1])]
+        else:
+            nodes = sorted(nodes, key=lambda nd: (nd.ref, nd.pin))
+            pairs = [(nodes[0], n) for n in nodes[1:]]
             msg = (f"net {net.name!r} has {len(nodes)} endpoints; "
                    f"expanded as a star from {nodes[0].ref}:{nodes[0].pin}")
             if getattr(net, "length_mm", None) is not None and not spec.length_mm:
@@ -116,10 +126,17 @@ def build_harness(conn: Connectivity, specs: SpecStore,
             warnings.append(msg)
 
         for a, b in pairs:
-            wires.append(Wire(net=net.name, a=a, b=b, spec=replace(spec),
-                              netclass=getattr(net, "netclass", "")))
+            w = Wire(net=net.name, a=a, b=b, spec=replace(spec),
+                     netclass=getattr(net, "netclass", ""))
+            if known_numbers and not w.spec.wire_no:
+                key = wire_key(net.name, b if len(pairs) > 1 else None)
+                if key in known_numbers:
+                    w.spec.wire_no = known_numbers[key]
+            wires.append(w)
 
     if auto_number:
-        (numberer or GlobalSequence()).number(wires)
+        order = sorted(wires, key=lambda w: (w.net, w.a.ref, w.a.pin,
+                                             w.b.ref, w.b.pin))
+        (numberer or GlobalSequence()).number(order)
 
     return Harness(wires=wires), warnings

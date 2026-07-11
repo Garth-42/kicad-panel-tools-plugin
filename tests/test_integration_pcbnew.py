@@ -100,6 +100,14 @@ def test_full_pipeline_csv(tmp_dir):
     # WireViz YAML emitted too (PyYAML is present alongside real KiCad here)
     assert any(p.endswith("it_harness.yaml") for p in res.outputs), res.outputs
 
+    # wire numbers persisted next to the outputs; a rerun is byte-identical
+    assert any(p.endswith("wire_numbers.json") for p in res.outputs), res.outputs
+    csv1 = open(os.path.join(tmp_dir, "it_wirelist.csv")).read()
+    generate_harness_docs(board, pcbnew_module=pcbnew,
+                          specs_path=os.path.join(FIXTURE, "harness_specs.yaml"),
+                          out_dir=tmp_dir, stem="it")
+    assert open(os.path.join(tmp_dir, "it_wirelist.csv")).read() == csv1
+
 
 def test_netlist_route_carries_classes(tmp_dir):
     """kicad-cli exports class="X,Default" per net; the CLI route must use it."""

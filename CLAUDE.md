@@ -28,7 +28,8 @@ cli.py / kicad_plugin/         front ends (invoke the pipeline)
   -> specs.py        SpecStore: spec-file layers (defaults/classes/cables/nets)
   -> ingest/         ConnectivitySource.load() -> Connectivity   <-- SWAP POINT
   -> model.py        pure dataclasses; no I/O, no KiCad knowledge
-  -> numbering.py    wire-numbering strategies
+  -> numbering.py    wire-numbering strategies (never reuse a taken number)
+  -> persist.py      wire_numbers.json store: numbers stick across re-exports
   -> cables.py       parse "W5.L1" -> (cable, conductor)
 ```
 
@@ -135,15 +136,24 @@ Still only mock-verified:
   length is left blank on star legs (the summed track length spans the whole net). Revisit
   if daisy-chain/explicit routing is needed.
 - WireViz emitter is solid on structure but not run through actual WireViz here.
-- Wire numbers are reassigned each run; no persistence yet (see roadmap: stable-ID store).
-  This is a live problem: the same board produced different number↔net pairings on two
-  machines, because scheme numbering follows net iteration order.
 - Plugin uses the numbering scheme from the spec file; no in-dialog picker.
+
+## Wire-number persistence (`persist.py`)
+
+Numbers stay attached to the same wire across re-exports via `wire_numbers.json`
+(next to the board / netlist; **commit it with the design**). Keys: net name for a
+plain 2-endpoint net; `"<net>@<ref>:<pin>"` (far endpoint) for star legs — the
+stable-id contract from `docs/FREECAD_ROADMAP.md` §7. Explicit `nets:` numbers and
+intrinsic cable-core labels always win over the store; schemes never reuse a taken
+number, so persisted + fresh can't collide; entries for absent nets are kept so a
+returning net gets its old number back. Fresh assignment iterates wires sorted by
+(net, endpoints), so even a first run is machine-independent (this bit — numbering
+following ingest iteration order — produced different number↔net pairings on two
+machines before). The plugin does this automatically; the CLI has `--numbers PATH`
+and `--no-persist`. A corrupt/unwritable store warns and never blocks the CSV.
 
 ## Roadmap
 
-- **Wire-number persistence**: `wire_numbers.json` keyed by stable net id so `M-001` stays
-  attached to the same physical wire across re-exports.
 - **FreeCAD / 3D (major)**: see `docs/FREECAD_ROADMAP.md`. FreeCAD becomes a third view on
   the same connectivity spine, contributing true 3D routed lengths and, later, a flattened
   formboard. This is the main planned expansion — read that doc before starting it.

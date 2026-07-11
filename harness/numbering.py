@@ -25,16 +25,30 @@ def _fmt(n: int, width: int) -> str:
     return f"{n:0{width}d}" if width else str(n)
 
 
+def _taken(wires) -> set:
+    """Numbers already carried by any wire (explicit, intrinsic, or persisted).
+
+    Counter schemes skip these so a fresh number never collides with one that
+    is already in use — the property that makes persisted numbers safe to mix
+    with newly assigned ones.
+    """
+    return {w.spec.wire_no for w in wires if w.spec.wire_no}
+
+
 class GlobalSequence(WireNumberer):
     def __init__(self, start: int = 1, prefix: str = "", width: int = 0):
         self.start, self.prefix, self.width = start, prefix, width
 
     def number(self, wires) -> None:
+        used = _taken(wires)
         n = self.start
         for w in wires:
             if w.spec.wire_no:
                 continue
+            while f"{self.prefix}{_fmt(n, self.width)}" in used:
+                n += 1
             w.spec.wire_no = f"{self.prefix}{_fmt(n, self.width)}"
+            used.add(w.spec.wire_no)
             n += 1
 
 
@@ -44,15 +58,20 @@ class PerCable(WireNumberer):
         self.sep, self.width, self.start = sep, width, start
 
     def number(self, wires) -> None:
+        used = _taken(wires)
         counters: dict[str, int] = {}
         for w in wires:
             if w.spec.wire_no:
                 continue
             cable = w.spec.cable or ""
             n = counters.get(cable, self.start)
+            while (f"{cable}{self.sep}{_fmt(n, self.width)}" if cable
+                   else _fmt(n, self.width)) in used:
+                n += 1
             counters[cable] = n + 1
             num = _fmt(n, self.width)
             w.spec.wire_no = f"{cable}{self.sep}{num}" if cable else num
+            used.add(w.spec.wire_no)
 
 
 class Equipotential(WireNumberer):
@@ -65,13 +84,17 @@ class Equipotential(WireNumberer):
         self.start, self.prefix, self.width = start, prefix, width
 
     def number(self, wires) -> None:
+        used = _taken(wires)
         assigned: dict[str, str] = {}
         n = self.start
         for w in wires:
             if w.spec.wire_no:
                 continue
             if w.net not in assigned:
+                while f"{self.prefix}{_fmt(n, self.width)}" in used:
+                    n += 1
                 assigned[w.net] = f"{self.prefix}{_fmt(n, self.width)}"
+                used.add(assigned[w.net])
                 n += 1
             w.spec.wire_no = assigned[w.net]
 
@@ -101,15 +124,20 @@ class GroupPrefix(WireNumberer):
         self.sep, self.width, self.start = sep, width, start
 
     def number(self, wires) -> None:
+        used = _taken(wires)
         counters: dict[str, int] = {}
         for w in wires:
             if w.spec.wire_no:
                 continue
             group = (getattr(w.spec, "prefix", "") or w.spec.cable or "").strip()
             n = counters.get(group, self.start)
+            while (f"{group}{self.sep}{_fmt(n, self.width)}" if group
+                   else _fmt(n, self.width)) in used:
+                n += 1
             counters[group] = n + 1
             num = _fmt(n, self.width)
             w.spec.wire_no = f"{group}{self.sep}{num}" if group else num
+            used.add(w.spec.wire_no)
 
 
 # name -> factory, for the CLI
