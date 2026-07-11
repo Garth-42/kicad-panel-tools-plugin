@@ -93,38 +93,40 @@ cable | net | srcdst | group). `group` numbers within a `prefix` (falls back to 
 
 ## Testing
 
-No real KiCad in CI. `tests/mock_pcbnew.py` is a faithful stand-in for the pcbnew API
-surface the adapter touches; everything else is tested by constructing `Connectivity`
-directly. Run all:
+Two tiers, all runnable with:
 
 ```
 for t in tests/test_*.py; do python3 "$t"; done
 ```
 
+- **Unit** (no KiCad needed): `tests/mock_pcbnew.py` stands in for the pcbnew API
+  surface the adapter touches; everything else is tested by constructing `Connectivity`
+  directly. `tests/test_precedence.py` locks in the spec merge ladder.
+- **Integration** (`tests/test_integration_pcbnew.py`): runs against REAL pcbnew
+  headless — skips cleanly when pcbnew is absent. Its fixture
+  (`tests/fixtures/kicad10_panel/`) is a real KiCad 10 project with a color swatch,
+  a class track width, routed W5/motor nets, and the spec file that exposed the
+  precedence bug. CI runs both tiers (see `.github/workflows/tests.yml`); the KiCad
+  job installs KiCad 10 from the official PPA.
+
 Each test prints `OK ...` on success and asserts. Keep them dependency-light (stdlib +
 PyYAML). When adding a feature, add/extend a test that builds a `Connectivity` and asserts
 on the resulting CSV/harness.
 
-## Tested vs. unverified (IMPORTANT before trusting board output)
+## Tested vs. unverified (before trusting board output)
 
-Verified on the user's real KiCad (macOS, KiCad from `Python.framework/3.9`):
-- footprint/pad/net -> Connectivity mapping
-- net class composite string reading + `classes:` mapping
-- group-bus cable naming `W5.L1` -> cable/conductor grouping, per-core colors
-- CSV + WireViz files written; PyYAML present in that KiCad's Python
+Verified against **real KiCad 10.0.4 headless** (integration test, every CI run):
+- footprint/pad/net -> Connectivity mapping; composite net-class strings + `classes:` map
+- net class **color swatch** -> hex and **track width** -> gauge (via
+  `NET_SETTINGS.GetNetClassByName` + `HasPcbColor`/`HasTrackWidth` — on KiCad 9/10
+  `net.GetNetClass()` returns an opaque SWIG pointer, and the *effective* class always
+  inherits Default's track width, so the per-name + Has-gate route is the only correct one)
+- **routed length**: `GetLength()` summed over tracks per net
+- kicad-cli netlist export carries `class="X,Default"` -> CLI route applies `classes:`
 
-Tested only against mock/synthetic:
-- engine precedence, all numbering schemes, WireViz structure, multi-conductor,
-  extras/cable passthrough, plugin core, graceful no-PyYAML fallback
-
-**UNVERIFIED on real hardware — the accessors to check first if board values are blank**
-(all in `ingest/pcbnew_board.py`, written defensively with `_first(...)` fallbacks):
-- net class **color**: `GetPcbColor()` / `GetSchematicColor()` -> COLOR4D -> hex
-- net class **track width**: `GetTrackWidth()` (nm) -> mm
-- **routed length**: `GetLength()` summed over tracks per net (needs tracks routed)
-
-If a board value comes out empty, run pcbnew's Scripting Console and probe the net class
-object methods, then fix the accessor name in `_netclass_color` / `_netclass_width_mm`.
+Still only mock-verified:
+- the KiCad 7/8 fallback path in `_netclass_meta` (pad -> net -> netclass object)
+- the WireViz YAML has not been run through actual WireViz
 
 ## Known gaps / next work
 
@@ -134,6 +136,8 @@ object methods, then fix the accessor name in `_netclass_color` / `_netclass_wid
   if daisy-chain/explicit routing is needed.
 - WireViz emitter is solid on structure but not run through actual WireViz here.
 - Wire numbers are reassigned each run; no persistence yet (see roadmap: stable-ID store).
+  This is a live problem: the same board produced different number↔net pairings on two
+  machines, because scheme numbering follows net iteration order.
 - Plugin uses the numbering scheme from the spec file; no in-dialog picker.
 
 ## Roadmap
