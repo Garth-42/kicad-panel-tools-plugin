@@ -125,9 +125,13 @@ Verified against **real KiCad 10.0.4 headless** (integration test, every CI run)
 - **routed length**: `GetLength()` summed over tracks per net
 - kicad-cli netlist export carries `class="X,Default"` -> CLI route applies `classes:`
 
+Also verified: the WireViz YAML renders through **real WireViz 0.4** (CI job
+`wireviz-render`; `tests/test_wireviz_render.py`). Gotcha encoded there: WireViz
+coerces numeric-looking connection pin refs to int, so numeric pins are emitted
+as ints on both sides (`emit/wireviz_yaml._pin_id`).
+
 Still only mock-verified:
 - the KiCad 7/8 fallback path in `_netclass_meta` (pad -> net -> netclass object)
-- the WireViz YAML has not been run through actual WireViz
 
 ## Known gaps / next work
 
@@ -135,7 +139,6 @@ Still only mock-verified:
 - `>2`-endpoint nets (e.g. shared GND) expand as a **star** from node[0] (warned). Board
   length is left blank on star legs (the summed track length spans the whole net). Revisit
   if daisy-chain/explicit routing is needed.
-- WireViz emitter is solid on structure but not run through actual WireViz here.
 - Plugin uses the numbering scheme from the spec file; no in-dialog picker.
 
 ## Wire-number persistence (`persist.py`)

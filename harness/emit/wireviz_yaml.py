@@ -34,6 +34,14 @@ def _field(component, keys):
     return ""
 
 
+def _pin_id(pin):
+    """WireViz coerces numeric-looking connection pin refs to int (expand()),
+    while connector `pins` entries stay as authored — emit numeric pins as int
+    on BOTH sides so the lookup matches ('J1:1 not found' otherwise)."""
+    p = str(pin)
+    return int(p) if p.isdigit() else p
+
+
 def build_wireviz(harness: Harness, components: dict | None = None) -> dict:
     components = components or {}
 
@@ -42,8 +50,8 @@ def build_wireviz(harness: Harness, components: dict | None = None) -> dict:
     for w in harness.wires:
         for node in (w.a, w.b):
             lst = pins_by_ref.setdefault(node.ref, [])
-            if node.pin not in lst:
-                lst.append(node.pin)
+            if _pin_id(node.pin) not in lst:
+                lst.append(_pin_id(node.pin))
 
     connectors: dict[str, dict] = {}
     for ref, pins in pins_by_ref.items():
@@ -91,9 +99,9 @@ def build_wireviz(harness: Harness, components: dict | None = None) -> dict:
 
         for i, w in enumerate(wires, start=1):
             connections.append([
-                {w.a.ref: [w.a.pin]},
+                {w.a.ref: [_pin_id(w.a.pin)]},
                 {cname: [i]},
-                {w.b.ref: [w.b.pin]},
+                {w.b.ref: [_pin_id(w.b.pin)]},
             ])
 
     return {"connectors": connectors, "cables": cables, "connections": connections}

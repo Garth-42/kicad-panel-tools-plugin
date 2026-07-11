@@ -19,6 +19,19 @@ jobs:
           set -e
           for t in tests/test_*.py; do python3 "$t"; done
 
+  # Render the emitted YAML through real WireViz (catches schema/coercion
+  # mismatches that structural checks can't, e.g. int-vs-str pin ids).
+  wireviz-render:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends graphviz
+      - run: pip install PyYAML wireviz
+      - run: python3 tests/test_wireviz_render.py
+
   # Full suite against real pcbnew, installed from the official KiCad 10 PPA.
   # pcbnew binds to the system python3, so PyYAML comes from apt, not pip.
   kicad-integration:

@@ -38,7 +38,10 @@ wv = build_wireviz(h, components=conn.components)
 # connector type from component value (not the designator); BOM field surfaced
 assert wv["connectors"]["-M1"]["type"] == "Motor_3ph"
 assert wv["connectors"]["-M1"]["mpn"] == "ABB-M3"          # from footprint field
-assert wv["connectors"]["X1"]["pins"] == ["1", "2", "3"]    # real pin ids preserved
+# real pin ids preserved; numeric pins are ints (matches WireViz's coercion of
+# connection refs — see emit/wireviz_yaml._pin_id), alpha pins stay strings
+assert wv["connectors"]["X1"]["pins"] == [1, 2, 3]
+assert wv["connectors"]["-M1"]["pins"] == ["U", "V"]
 
 W1 = wv["cables"]["W1"]
 assert W1["wirecount"] == 2
