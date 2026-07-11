@@ -1,0 +1,37 @@
+# harness_specs.yaml  -- place next to your .kicad_pcb (this exact filename).
+#
+# Three orthogonal concerns, three sources:
+#   wire TYPE (gauge, base color)   <- KiCad net CLASS  -> classes: below
+#   CABLE identity + conductor id   <- KiCad net NAME "W5.L1" (named group bus)
+#   per-conductor / cable facts     <- cables: below
+# Board values (net-class color swatch, track width, routed length) fill anything
+# you leave unset. Anything you set here overrides the board.
+
+numbering: group          # global | cable | net | srcdst | group
+cable_delimiter: "."      # KiCad named group buses produce nets like "W5.L1"
+
+defaults:
+  gauge: "20 AWG"
+
+# Keyed by KiCad NET CLASS name (wire type). Orthogonal to cable identity.
+classes:
+  "14AWG_BN": { cable: W1, gauge: "14 AWG", color: BN, prefix: C }
+  "16AWG_MOTOR": { cable: WM, prefix: M }     # gauge/color unset -> take from board
+
+# Multi-conductor cables. A net named "<CABLE>.<core>" is treated as a cable core
+# ONLY if <CABLE> is listed here (so power nets like 3.3V are never misread).
+# Draw each cable as a NAMED GROUP BUS in KiCad: W5{L1 L2 L3 PE} -> W5.L1, W5.L2...
+cables:
+  W5:
+    gauge: "1.5 mm2"        # one gauge for the whole cable (fills each core)
+    shield: "yes"           # cable-level facts -> extra columns on every core
+    jacket: "PVC"
+    cores:                  # per-core detail, keyed by the core id after the dot
+      L1: { color: BN }
+      L2: { color: BK }
+      L3: { color: GY }
+      PE: { color: GNYE }
+
+nets: {}
+  # Per-net override for STANDALONE wires (keyed by net name):
+  # "/START": { wire_no: "201" }

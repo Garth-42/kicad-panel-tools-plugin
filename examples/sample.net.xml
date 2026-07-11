@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<export version="E">
+  <components>
+    <comp ref="X1"><value>Terminal_3</value><fields></fields></comp>
+    <comp ref="-M1"><value>Motor_3ph</value><fields></fields></comp>
+    <comp ref="-KM1"><value>Contactor</value><fields></fields></comp>
+  </components>
+  <nets>
+    <net code="1" name="/W1_U">
+      <node ref="X1" pin="1" pinfunction="1"/>
+      <node ref="-M1" pin="U" pinfunction="U"/>
+    </net>
+    <net code="2" name="/W1_V">
+      <node ref="X1" pin="2" pinfunction="2"/>
+      <node ref="-M1" pin="V" pinfunction="V"/>
+    </net>
+    <net code="3" name="/CTRL_A1">
+      <node ref="X1" pin="3" pinfunction="3"/>
+      <node ref="-KM1" pin="A1" pinfunction="A1"/>
+    </net>
+  </nets>
+</export>

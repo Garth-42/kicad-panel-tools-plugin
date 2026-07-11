@@ -1,0 +1,22 @@
+defaults:
+  gauge: "20 AWG"
+  color: ""
+nets:
+  "/W1_U":
+    cable: W1
+    wire_no: "101"
+    gauge: "14 AWG"
+    color: BN
+    length_mm: "300"
+  "/W1_V":
+    cable: W1
+    wire_no: "102"
+    gauge: "14 AWG"
+    color: BK
+    length_mm: "300"
+  "/CTRL_A1":
+    cable: W2
+    wire_no: "201"
+    gauge: "18 AWG"
+    color: BU
+    length_mm: "450"
