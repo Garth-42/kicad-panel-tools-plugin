@@ -1,0 +1,171 @@
+# CLAUDE.md — harness_engine
+
+Context for working on this project in Claude Code. Read this first.
+
+## What this is
+
+A KiCad-agnostic engine that turns an electrical design into **wire-harness
+manufacturing documentation** (a point-to-point wire list, plus WireViz YAML for
+a diagram + BOM). It grew out of frustration with QElectroTech; the design goal is
+that the **schematic/board is the single source of truth** and the docs are
+generated, never hand-maintained.
+
+It runs two ways:
+- **Board route** (richest): a pcbnew Action Plugin reads the open KiCad board.
+  Only this route can produce real **cut lengths** (from routed track length).
+- **Netlist route** (no footprints needed): a CLI parses an exported netlist.
+  Everything except length.
+
+## Architecture — one spine, swappable front ends
+
+Dependencies point downward only. The whole design rests on a neutral data model
+(`model.py`) that knows nothing about KiCad; everything else is an adapter.
+
+```
+cli.py / kicad_plugin/         front ends (invoke the pipeline)
+  -> emit/           wirelist_csv.py, wireviz_yaml.py     (outputs)
+  -> engine.py       build_harness(Connectivity, SpecStore) -> Harness; owns precedence
+  -> specs.py        SpecStore: spec-file layers (defaults/classes/cables/nets)
+  -> ingest/         ConnectivitySource.load() -> Connectivity   <-- SWAP POINT
+  -> model.py        pure dataclasses; no I/O, no KiCad knowledge
+  -> numbering.py    wire-numbering strategies (never reuse a taken number)
+  -> persist.py      wire_numbers.json store: numbers stick across re-exports
+  -> cables.py       parse "W5.L1" -> (cable, conductor)
+```
+
+**The ingest interface (`ingest/base.py: ConnectivitySource.load() -> Connectivity`)
+is the extension seam.** Adding a new data source (or, later, FreeCAD) means adding
+one adapter here and nothing above changes.
+
+Current ingest adapters:
+- `KicadNetlistSource` — parses `kicad-cli sch export netlist --format kicadxml`. Works today.
+- `KicadBoardSource` — reads a live/loaded pcbnew board (footprints/pads/tracks/nets).
+  Works today; the ONLY source of routed lengths.
+- `KicadIpcSource` — **stub**. Placeholder for the schematic IPC API (not in KiCad 9/10).
+
+## Data model (`model.py`)
+
+- `Node(ref, pin, pinfunction)` — one pad/pin on a component.
+- `Component(ref, value, fields)` — a placed part; `fields` = custom footprint fields.
+- `Net(code, name, nodes, netclass, length_mm, color, track_width_mm)` — an electrical
+  potential. `length_mm/color/track_width_mm` are only populated by the board adapter.
+- `Connectivity(components, nets)` — everything an ingest source must provide.
+- `WireSpec(cable, wire_no, gauge, color, length_mm, prefix, conductor, extra)` — resolved
+  per-wire metadata. `extra` is an open dict for arbitrary passthrough fields.
+- `Wire(net, a, b, spec, netclass)` — a point-to-point conductor.
+- `Harness(wires)` — result; `.cables()` groups wires by cable name.
+
+## KiCad conventions (how the design carries harness data)
+
+KiCad has no place to type wire attributes onto a wire, so we encode them via things
+KiCad *does* have:
+
+| Harness concept        | KiCad mechanism                        | Read by |
+|------------------------|----------------------------------------|---------|
+| Wire type (gauge, color) | **net class NAME** -> `classes:` map | both routes |
+| Wire color (optional)  | net class **color swatch**             | board route (unverified) |
+| Wire diameter/gauge    | net class **track width**              | board route (unverified) |
+| Cut length             | **routed track length**                | board route |
+| Cable identity + core  | **named group bus** `W5{L1 L2 L3}` -> nets `W5.L1` | both routes |
+| Connector part data    | **footprint custom fields**            | board route |
+
+**Net class names come back composite**, e.g. `"16AWG_MOTOR,Default"` — KiCad lists all
+memberships incl. the implicit `Default`. `SpecStore.resolve` splits on comma and drops
+`Default`. (This was a real bug found via the `netclass` CSV column — keep that column.)
+
+**Multi-conductor cables**: a net named `<CABLE>.<core>` (from a KiCad *named group bus*)
+is treated as a cable core **only if `<CABLE>` is declared under `cables:`** — this opt-in
+prevents power nets like `3.3V` being misread as cable `3`. A group bus `W5{L1 L2 L3}`
+produces nets `W5.L1/W5.L2/W5.L3`; the wire *labels* are what name the nets (the bus line
+itself is cosmetic — a common gotcha). Cores share the cable id, get distinct `conductor`
+ids, per-core colors from `cables.<W>.cores.<id>`, and an intrinsic `wire_no` = `W5-L1`.
+
+## Spec file (`harness_specs.yaml`)
+
+Lives next to the `.kicad_pcb` (plugin auto-loads that exact filename). Full schema and
+examples in `docs/SPEC_SCHEMA.md`; `examples/classes.specs.yaml` is a working sample.
+
+Precedence, low to high: `defaults` (last-resort fill) < board values (color/width/length)
+< net `classes` / `cables` cable-level (classes win where both set a field) <
+`cables.<W>.cores` per-core < `nets` per-net override (highest). Explicit YAML always
+beats board-derived values; the whole merge lives in `engine._resolve_spec` and is locked
+in by `tests/test_precedence.py`. Numbering scheme via top-level `numbering:` (global |
+cable | net | srcdst | group). `group` numbers within a `prefix` (falls back to `cable`).
+
+## Testing
+
+Two tiers, all runnable with:
+
+```
+for t in tests/test_*.py; do python3 "$t"; done
+```
+
+- **Unit** (no KiCad needed): `tests/mock_pcbnew.py` stands in for the pcbnew API
+  surface the adapter touches; everything else is tested by constructing `Connectivity`
+  directly. `tests/test_precedence.py` locks in the spec merge ladder.
+- **Integration** (`tests/test_integration_pcbnew.py`): runs against REAL pcbnew
+  headless — skips cleanly when pcbnew is absent. Its fixture
+  (`tests/fixtures/kicad10_panel/`) is a real KiCad 10 project with a color swatch,
+  a class track width, routed W5/motor nets, and the spec file that exposed the
+  precedence bug. CI runs both tiers (see `.github/workflows/tests.yml`); the KiCad
+  job installs KiCad 10 from the official PPA.
+
+Each test prints `OK ...` on success and asserts. Keep them dependency-light (stdlib +
+PyYAML). When adding a feature, add/extend a test that builds a `Connectivity` and asserts
+on the resulting CSV/harness.
+
+## Tested vs. unverified (before trusting board output)
+
+Verified against **real KiCad 10.0.4 headless** (integration test, every CI run):
+- footprint/pad/net -> Connectivity mapping; composite net-class strings + `classes:` map
+- net class **color swatch** -> hex and **track width** -> gauge (via
+  `NET_SETTINGS.GetNetClassByName` + `HasPcbColor`/`HasTrackWidth` — on KiCad 9/10
+  `net.GetNetClass()` returns an opaque SWIG pointer, and the *effective* class always
+  inherits Default's track width, so the per-name + Has-gate route is the only correct one)
+- **routed length**: `GetLength()` summed over tracks per net
+- kicad-cli netlist export carries `class="X,Default"` -> CLI route applies `classes:`
+
+Also verified: the WireViz YAML renders through **real WireViz 0.4** (CI job
+`wireviz-render`; `tests/test_wireviz_render.py`). Gotcha encoded there: WireViz
+coerces numeric-looking connection pin refs to int, so numeric pins are emitted
+as ints on both sides (`emit/wireviz_yaml._pin_id`).
+
+Still only mock-verified:
+- the KiCad 7/8 fallback path in `_netclass_meta` (pad -> net -> netclass object)
+
+## Known gaps / next work
+
+- **Length** requires routed tracks; unrouted nets yield blank `length_mm`.
+- `>2`-endpoint nets (e.g. shared GND) expand as a **star** from node[0] (warned). Board
+  length is left blank on star legs (the summed track length spans the whole net). Revisit
+  if daisy-chain/explicit routing is needed.
+- Plugin uses the numbering scheme from the spec file; no in-dialog picker.
+
+## Wire-number persistence (`persist.py`)
+
+Numbers stay attached to the same wire across re-exports via `wire_numbers.json`
+(next to the board / netlist; **commit it with the design**). Keys: net name for a
+plain 2-endpoint net; `"<net>@<ref>:<pin>"` (far endpoint) for star legs — the
+stable-id contract from `docs/FREECAD_ROADMAP.md` §7. Explicit `nets:` numbers and
+intrinsic cable-core labels always win over the store; schemes never reuse a taken
+number, so persisted + fresh can't collide; entries for absent nets are kept so a
+returning net gets its old number back. Fresh assignment iterates wires sorted by
+(net, endpoints), so even a first run is machine-independent (this bit — numbering
+following ingest iteration order — produced different number↔net pairings on two
+machines before). The plugin does this automatically; the CLI has `--numbers PATH`
+and `--no-persist`. A corrupt/unwritable store warns and never blocks the CSV.
+
+## Roadmap
+
+- **FreeCAD / 3D (major)**: see `docs/FREECAD_ROADMAP.md`. FreeCAD becomes a third view on
+  the same connectivity spine, contributing true 3D routed lengths and, later, a flattened
+  formboard. This is the main planned expansion — read that doc before starting it.
+
+## Conventions for changes
+
+- Keep `model.py` free of I/O and KiCad specifics.
+- New data sources = new `ConnectivitySource` in `ingest/`; don't leak source specifics upward.
+- Additive dataclass fields (defaults) to avoid breaking existing adapters.
+- YAML imports stay **lazy** (KiCad's bundled Python often lacks PyYAML); the CSV path must
+  work without it.
+- Prefer "fill-empty" merges so explicit user values always win over derived/board ones.
