@@ -6,6 +6,14 @@ generated, never hand-maintained.
 
 ## Docs
 
+**User guide** (GitHub Pages site, source in `docs/`):
+[index](docs/index.md) · [installation](docs/installation.md) ·
+[KiCad project setup / naming conventions](docs/kicad-setup.md) ·
+[exporting CSV & WireViz](docs/exporting.md).
+To host it: repo **Settings → Pages → Deploy from a branch → `main` + `/docs`**.
+
+Developer docs:
+
 - **`CLAUDE.md`** — architecture, conventions, testing, and the tested-vs-unverified matrix.
   Start here (also the Claude Code context file).
 - **`docs/SPEC_SCHEMA.md`** — full `harness_specs.yaml` reference.
