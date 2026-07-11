@@ -1,0 +1,37 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  # Mock-based suite: no KiCad. The pcbnew integration test skips itself.
+  unit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install PyYAML
+      - name: Run tests
+        run: |
+          set -e
+          for t in tests/test_*.py; do python3 "$t"; done
+
+  # Full suite against real pcbnew, installed from the official KiCad 10 PPA.
+  # pcbnew binds to the system python3, so PyYAML comes from apt, not pip.
+  kicad-integration:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install KiCad 10
+        run: |
+          sudo add-apt-repository -y ppa:kicad/kicad-10.0-releases
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends kicad python3-yaml
+      - name: Run tests (incl. pcbnew integration)
+        run: |
+          set -e
+          python3 -c "import pcbnew; print(pcbnew.GetBuildVersion())"
+          for t in tests/test_*.py; do python3 "$t"; done
