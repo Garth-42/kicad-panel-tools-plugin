@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Panel wiring (harness_engine)</title></head>
+<body>
+<h1>Panel wiring</h1>
+<p>A starter project for drawing <b>panel / harness wiring at 1:1 scale</b> in the
+PCB editor, ready for the <i>harness_engine</i> exporter
+(<b>Tools &rarr; External Plugins &rarr; Generate harness docs</b>).</p>
+<ul>
+  <li><b>Net classes = wire types</b>, pre-made with colors and visual widths:
+      14AWG_BN, 16AWG_BU, 18AWG_RD, 1.5MM2_GNYE, CTRL_GY. Tracks render in the
+      wire color while you route.</li>
+  <li><b>600 &times; 400 mm panel outline</b> on Edge.Cuts — resize to your enclosure.
+      Use User.Drawings for DIN rails and wire duct.</li>
+  <li><b>harness_specs.yaml</b> starter next to the board, pre-mapped to the classes.</li>
+</ul>
+<p>Workflow: schematic &rarr; assign nets to wire-type classes &rarr; Update PCB &rarr;
+place device footprints at their real panel positions &rarr; route each wire at real
+scale &rarr; export. Routed length becomes the wire's cut length.</p>
+</body>
+</html>

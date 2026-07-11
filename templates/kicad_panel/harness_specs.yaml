@@ -1,0 +1,34 @@
+# harness_specs.yaml — starter (matches the template's net classes).
+# Full reference: docs/SPEC_SCHEMA.md in the harness_engine repo.
+
+numbering: group          # global | cable | net | srcdst | group
+cable_delimiter: "."
+
+defaults:
+  gauge: "0.5 mm2"        # last-resort fill; never masks anything above it
+
+# Wire types, keyed by KiCad NET CLASS name (must match exactly).
+# Leave gauge/color out to take the board's class track width / color swatch.
+classes:
+  "14AWG_BN":    { gauge: "14 AWG",  color: BN,   prefix: P }
+  "16AWG_BU":    { gauge: "16 AWG",  color: BU,   prefix: N }
+  "18AWG_RD":    { gauge: "18 AWG",  color: RD,   prefix: C }
+  "1.5MM2_GNYE": { gauge: "1.5 mm2", color: GNYE, prefix: PE }
+  "CTRL_GY":     { gauge: "0.5 mm2", color: GY,   prefix: C }
+
+# Multi-conductor cables (opt-in). Draw a named group bus W5{L1 L2 L3 PE} and
+# label the wires W5.L1 ... — the wire labels are what name the nets.
+cables: {}
+  # W5:
+  #   gauge: "1.5 mm2"
+  #   jacket: PVC
+  #   shield: "no"
+  #   cores:
+  #     L1: { color: BN }
+  #     L2: { color: BK }
+  #     L3: { color: GY }
+  #     PE: { color: GNYE }
+
+# Per-net overrides (highest precedence).
+nets: {}
+  # "/START": { wire_no: "201" }
