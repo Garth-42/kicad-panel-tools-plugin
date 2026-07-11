@@ -24,8 +24,8 @@ Dependencies point downward only. The whole design rests on a neutral data model
 ```
 cli.py / kicad_plugin/         front ends (invoke the pipeline)
   -> emit/           wirelist_csv.py, wireviz_yaml.py     (outputs)
-  -> engine.py       build_harness(Connectivity, SpecStore) -> Harness
-  -> specs.py        SpecStore: per-net/class/cable metadata + precedence
+  -> engine.py       build_harness(Connectivity, SpecStore) -> Harness; owns precedence
+  -> specs.py        SpecStore: spec-file layers (defaults/classes/cables/nets)
   -> ingest/         ConnectivitySource.load() -> Connectivity   <-- SWAP POINT
   -> model.py        pure dataclasses; no I/O, no KiCad knowledge
   -> numbering.py    wire-numbering strategies
@@ -84,10 +84,12 @@ ids, per-core colors from `cables.<W>.cores.<id>`, and an intrinsic `wire_no` = 
 Lives next to the `.kicad_pcb` (plugin auto-loads that exact filename). Full schema and
 examples in `docs/SPEC_SCHEMA.md`; `examples/classes.specs.yaml` is a working sample.
 
-Precedence, low to high: `defaults` < net `classes` < board values (color/width/length,
-fill-empty only) < `cables` cable-level (fill-empty) < `cables.<W>.cores` per-core (override)
-< `nets` per-net override. Numbering scheme via top-level `numbering:` (global | cable |
-net | srcdst | group). `group` numbers within a `prefix` (falls back to `cable`).
+Precedence, low to high: `defaults` (last-resort fill) < board values (color/width/length)
+< net `classes` / `cables` cable-level (classes win where both set a field) <
+`cables.<W>.cores` per-core < `nets` per-net override (highest). Explicit YAML always
+beats board-derived values; the whole merge lives in `engine._resolve_spec` and is locked
+in by `tests/test_precedence.py`. Numbering scheme via top-level `numbering:` (global |
+cable | net | srcdst | group). `group` numbers within a `prefix` (falls back to `cable`).
 
 ## Testing
 
@@ -127,7 +129,8 @@ object methods, then fix the accessor name in `_netclass_color` / `_netclass_wid
 ## Known gaps / next work
 
 - **Length** requires routed tracks; unrouted nets yield blank `length_mm`.
-- `>2`-endpoint nets (e.g. shared GND) expand as a **star** from node[0] (warned). Revisit
+- `>2`-endpoint nets (e.g. shared GND) expand as a **star** from node[0] (warned). Board
+  length is left blank on star legs (the summed track length spans the whole net). Revisit
   if daisy-chain/explicit routing is needed.
 - WireViz emitter is solid on structure but not run through actual WireViz here.
 - Wire numbers are reassigned each run; no persistence yet (see roadmap: stable-ID store).

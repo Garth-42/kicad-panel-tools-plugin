@@ -17,11 +17,30 @@ Spec file (YAML) shape:
         gauge: "18 AWG"
         color: RD
         length_mm: "250"
+
+This module only stores and slices the spec file into layers; the precedence
+merge across layers (and board-derived values) lives in engine._resolve_spec.
 """
 from __future__ import annotations
-from .model import WireSpec
 
 _FIELDS = ("cable", "wire_no", "gauge", "color", "length_mm", "prefix")
+
+
+def split_fields(src: dict | None) -> tuple[dict, dict]:
+    """Split one raw spec mapping into (known wire fields, extra passthrough).
+
+    Known fields are stringified; empty strings are dropped so they never mask
+    a lower layer. Unknown keys pass through untouched (they become CSV columns).
+    """
+    fields: dict = {}
+    extra: dict = {}
+    for k, v in (src or {}).items():
+        if k in _FIELDS:
+            if str(v) != "":
+                fields[k] = str(v)
+        else:
+            extra[k] = v
+    return fields, extra
 
 
 class SpecStore:
@@ -47,19 +66,36 @@ class SpecStore:
                    numbering=data.get("numbering", ""),
                    cable_delimiter=data.get("cable_delimiter", "."))
 
-    def resolve(self, net_name: str, netclass: str = "") -> WireSpec:
-        # Precedence: defaults < net class(es) < per-net override.
-        merged = {k: str(self.defaults.get(k, "")) for k in _FIELDS}
-        # KiCad reports composite membership, e.g. "16AWG_MOTOR,Default".
-        # Split it, drop the implicit Default, and apply each matching class.
-        class_sources = [self.classes.get(c.strip(), {})
-                         for c in netclass.split(",")
-                         if c.strip() and c.strip() != "Default"]
+    # ---- layers, consumed by engine._resolve_spec ---------------------------
+    def class_layer(self, netclass: str) -> tuple[dict, dict]:
+        """(fields, extra) merged from every matched net class.
+
+        KiCad reports composite membership, e.g. "16AWG_MOTOR,Default"; split
+        it, drop the implicit Default, and apply each named class in order.
+        """
+        fields: dict = {}
         extra: dict = {}
-        for src in (*class_sources, self.nets.get(net_name, {})):
-            for k, v in (src or {}).items():
-                if k in _FIELDS and str(v) != "":
-                    merged[k] = str(v)
-                elif k not in _FIELDS:            # arbitrary passthrough field
-                    extra[k] = v
-        return WireSpec(extra=extra, **merged)
+        for cname in (netclass or "").split(","):
+            cname = cname.strip()
+            if not cname or cname == "Default":
+                continue
+            f, e = split_fields(self.classes.get(cname))
+            fields.update(f)
+            extra.update(e)
+        return fields, extra
+
+    def cable_layer(self, cable: str) -> tuple[dict, dict]:
+        """Cable-level facts for a declared cable (its cores: map excluded)."""
+        cinfo = self.cables.get(cable) or {}
+        return split_fields({k: v for k, v in cinfo.items() if k != "cores"})
+
+    def core_layer(self, cable: str, conductor: str) -> tuple[dict, dict]:
+        """Per-conductor detail for one core of a declared cable."""
+        cores = (self.cables.get(cable) or {}).get("cores") or {}
+        return split_fields(cores.get(conductor))
+
+    def net_layer(self, net_name: str) -> tuple[dict, dict]:
+        return split_fields(self.nets.get(net_name))
+
+    def defaults_layer(self) -> tuple[dict, dict]:
+        return split_fields(self.defaults)

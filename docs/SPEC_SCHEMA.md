@@ -23,15 +23,21 @@ nets:    { ... }          # keyed by KiCad NET name -> per-net override (highest
 
 ## Precedence (low → high)
 
-1. `defaults`
-2. `classes` (matched net class; composite `"X,Default"` is split, `Default` dropped)
-3. board values — net-class **color swatch**, **track width**→gauge, **routed length** (fill-empty only)
-4. `cables.<id>` cable-level fields (fill-empty)
-5. `cables.<id>.cores.<coreId>` per-conductor (override)
-6. `nets.<netName>` per-net override
+For each field, the most specific source that sets it wins:
 
-"Fill-empty" means a value only applies if nothing more specific already set it, so anything
-you type explicitly wins over anything derived.
+1. `defaults` — last-resort fill; anything else beats it
+2. board values — net-class **color swatch**, **track width**→gauge, **routed length**
+3. `classes` (matched net class; composite `"X,Default"` is split, `Default` dropped)
+   and `cables.<id>` cable-level fields (classes win where both set a field;
+   cable-level fills what classes leave empty)
+4. `cables.<id>.cores.<coreId>` per-conductor
+5. `nets.<netName>` per-net override — highest
+
+Two rules generate this ladder: **explicit YAML always beats board-derived values**
+(leave a field out to let the board fill it), and `defaults` never masks anything —
+it only fills fields no other source set. Routed length applies only to 2-endpoint
+nets; a >2-endpoint (star-expanded) net leaves per-leg length blank, since the summed
+track length spans the whole net.
 
 ## Numbering schemes (`numbering:`)
 
