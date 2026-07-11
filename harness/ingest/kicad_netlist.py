@@ -35,7 +35,10 @@ class KicadNetlistSource(ConnectivitySource):
         nets = root.find("nets")
         if nets is not None:
             for net in nets.findall("net"):
-                n = Net(code=net.get("code", ""), name=net.get("name", ""))
+                # KiCad 9/10 kicad-cli emits the net class (composite, same
+                # "X,Default" form the board reports); older exports lack it.
+                n = Net(code=net.get("code", ""), name=net.get("name", ""),
+                        netclass=net.get("class", "") or "")
                 for node in net.findall("node"):
                     n.nodes.append(Node(
                         ref=node.get("ref", ""),
