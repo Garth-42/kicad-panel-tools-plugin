@@ -38,6 +38,11 @@ def _board_stem_and_dir(board, out_dir, stem):
     return (out_dir or os.getcwd()), (stem or "harness")
 
 
+def generate_harness_docs(board, *, pcbnew_module=None, specs_path=None,
+                          out_dir=None, stem=None, emit_wireviz=True,
+                          render_wireviz=True) -> Result:
+    res = Result()
+    out_dir, stem = _board_stem_and_dir(board, out_dir, stem)
 
 def _build_numbered_harness(board, pcbnew_module, specs_path, out_dir, stem, res):
     source = KicadBoardSource.from_board(board, pcbnew_module)
@@ -212,6 +217,15 @@ def generate_harness_docs(board, *, pcbnew_module=None, specs_path=None,
             wv_path = os.path.join(out_dir, f"{stem}_harness.yaml")
             write_wireviz(harness, wv_path, components=conn.components)
             res.outputs.append(wv_path)
+            if render_wireviz:
+                try:
+                    from harness.wireviz import render_wireviz as _render_wireviz
+                    res.outputs.extend(_render_wireviz(wv_path))
+                except Exception as e:
+                    # Graphviz is an external executable, so KiCad installations
+                    # without it still get the YAML without a noisy warning.
+                    if "Graphviz" not in str(e) and "dot" not in str(e):
+                        res.warnings.append(f"WireViz render skipped: {e}")
         except Exception as e:  # PyYAML absent -> skip, don't fail the CSV
             res.warnings.append(f"WireViz YAML skipped: {e}")
 

@@ -56,13 +56,16 @@ With KiCad 9/10's `kicad-cli`, the netlist carries your net-class assignments,
 so wire types work on this route too. Lengths don't — only the routed board
 knows those.
 
-## Rendering diagrams (optional)
+## Rendering diagrams
 
-The exporter writes WireViz *input* YAML. To turn it into an actual
-diagram/BOM you need [WireViz](https://github.com/wireviz/WireViz) and
-Graphviz on any machine (not necessarily the KiCad one):
+The plugin now bundles a WireViz-compatible renderer for the YAML it emits, so
+**Generate harness docs** can write `*_harness.png`, `.svg`, `.html`, and
+`.bom.tsv` without installing the upstream WireViz Python package. Image
+rendering still needs Graphviz `dot` on the KiCad machine. If `dot` is not
+installed, the YAML is still written and can be rendered elsewhere.
 
 ```
-pip install wireviz          # also needs graphviz (apt/brew install graphviz)
+# Optional: install the full upstream WireViz CLI; the plugin uses it when found.
+pip install wireviz
 wireviz design_harness.yaml  # -> .png, .svg, .html, .bom.tsv
 ```

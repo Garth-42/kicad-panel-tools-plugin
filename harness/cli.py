@@ -16,6 +16,8 @@ def main(argv=None):
     p.add_argument("--specs", help="YAML of per-net wire specs (gauge/color/length/cable/no)")
     p.add_argument("--csv", default="wirelist.csv", help="output wire-list CSV")
     p.add_argument("--wireviz", help="also emit a WireViz YAML to this path")
+    p.add_argument("--render-wireviz", action="store_true",
+                   help="render WireViz PNG/SVG/HTML/BOM outputs after writing YAML")
     p.add_argument("--numbering", choices=list(SCHEMES), default="global",
                    help="wire-numbering scheme: global | cable | net (IEC equipotential) | srcdst")
     p.add_argument("--no-autonumber", action="store_true", help="do not auto-assign wire numbers")
@@ -62,7 +64,11 @@ def main(argv=None):
         print(f"wire review table -> {args.review}")
     if args.wireviz:
         write_wireviz(harness, args.wireviz, components=conn.components)
-        print(f"WireViz YAML -> {args.wireviz}  (render: wireviz {args.wireviz})")
+        print(f"WireViz YAML -> {args.wireviz}")
+        if args.render_wireviz:
+            from .wireviz import render_wireviz
+            for out in render_wireviz(args.wireviz):
+                print(f"WireViz render -> {out}")
     for w in warnings:
         print(f"  warning: {w}", file=sys.stderr)
     return 0
