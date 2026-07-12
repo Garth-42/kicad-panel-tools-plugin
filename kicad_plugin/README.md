@@ -1,6 +1,7 @@
 # Harness docs — KiCad pcbnew Action Plugin
 
-Adds **Tools → External Plugins → Generate harness docs** to the PCB editor.
+Adds **Tools → External Plugins → Generate harness docs** to the PCB editor and
+ships an icon so KiCad can also place the action directly on the pcbnew toolbar.
 It reads the open board, extracts connectivity and **routed track lengths**, and
 writes `<board>_wirelist.csv` (and `<board>_harness.yaml` for WireViz) next to
 the board file.
@@ -38,8 +39,11 @@ for generating 2D panel-device footprints (body + named terminal rows).
    scale** — the routed length becomes the wire cut length.
 3. *(optional)* Drop a `harness_specs.yaml` next to the board mapping net classes
    to gauge/color/cable (see `examples/classes.specs.yaml`).
-4. **Tools → External Plugins → Generate harness docs.** A dialog reports the wire
-   count and output paths.
+4. Click the **Generate harness docs** toolbar button, or use
+   **Tools → External Plugins → Generate harness docs**. A dialog reports the wire
+   count and output paths. Use **Edit Review Table** to adjust wire
+   numbers/notes in a native KiCad grid and immediately regenerate outputs, or
+   **Open Review CSV** to edit the same table in a spreadsheet.
 
 ## Headless test (KiCad's Python)
 
