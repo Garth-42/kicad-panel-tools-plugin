@@ -26,6 +26,11 @@ class _Pad:
     def GetNumber(self): return self._num
     def GetNetname(self): return self._net._n
     def GetNet(self): return self._net
+    # Real-pcbnew trap: PAD.SetName is a legacy alias for SetNumber — it sets
+    # the PAD NUMBER, not any net name. Present here so code that wrongly
+    # "renames" a pad corrupts the mock board exactly like a real one.
+    def SetName(self, number): self._num = number
+    SetNumber = SetName
 
 class _Footprint:
     def __init__(self, ref, value, fields, pads):
@@ -36,12 +41,14 @@ class _Footprint:
     def Pads(self): return self._pads
 
 class _Track:
+    # Like real PCB_TRACK: no SetNetname/SetName — the net name lives on the
+    # shared NETINFO object (_Net), reachable via GetNet().
     def __init__(self, netname, length_nm, is_via=False):
-        self._net, self._len, self._via = netname, length_nm, is_via
+        self._net = _Net(netname)  # replaced by the board's shared net object
+        self._len, self._via = length_nm, is_via
     def GetClass(self): return "PCB_VIA" if self._via else "PCB_TRACK"
-    def GetNetname(self): return self._net
-    def GetNet(self): return _Net(self._net)
-    def SetNetname(self, name): self._net = name
+    def GetNetname(self): return self._net._n
+    def GetNet(self): return self._net
     def GetLength(self): return self._len
 
 class _SwigNetMap:
@@ -52,10 +59,16 @@ class _SwigNetMap:
 class _Board:
     def __init__(self, footprints, tracks, filename=""):
         self._fp, self._tk, self._fn = footprints, tracks, filename
+        # One shared NETINFO object per net name, like a real BOARD. The map
+        # stays keyed by these construction-time names even after a net is
+        # renamed via SetNetname — real KiCad's GetNetsByName goes stale the
+        # same way, which is what routes renames through the pad/track path.
         self._nets = {}
         for fp in footprints:
             for pad in fp.Pads():
-                self._nets.setdefault(pad.GetNetname(), pad.GetNet())
+                pad._net = self._nets.setdefault(pad.GetNetname(), pad.GetNet())
+        for tk in tracks:
+            tk._net = self._nets.setdefault(tk.GetNetname(), tk.GetNet())
     def GetFileName(self): return self._fn
     def GetFootprints(self): return self._fp
     def GetTracks(self): return self._tk

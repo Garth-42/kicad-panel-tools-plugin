@@ -38,13 +38,8 @@ def _board_stem_and_dir(board, out_dir, stem):
     return (out_dir or os.getcwd()), (stem or "harness")
 
 
-def generate_harness_docs(board, *, pcbnew_module=None, specs_path=None,
-                          out_dir=None, stem=None, emit_wireviz=True,
-                          render_wireviz=True) -> Result:
-    res = Result()
-    out_dir, stem = _board_stem_and_dir(board, out_dir, stem)
-
-def _build_numbered_harness(board, pcbnew_module, specs_path, out_dir, stem, res):
+def _build_numbered_harness(board, pcbnew_module, specs_path, out_dir, stem, res,
+                            reclaim_net_name_numbers=False):
     source = KicadBoardSource.from_board(board, pcbnew_module)
     conn = source.load()
 
@@ -68,6 +63,17 @@ def _build_numbered_harness(board, pcbnew_module, specs_path, out_dir, stem, res
     store = WireNumberStore(os.path.join(out_dir, WIRE_NUMBERS_NAME))
     known = store.load()
     known.update(review_numbers(review_rows))
+    if reclaim_net_name_numbers:
+        # After "apply wire numbers to net names", the store is keyed by the
+        # pre-rename net names, so a renamed net would look brand new and get a
+        # fresh number (P-001 -> 001 -> ... on every apply). A net whose name IS
+        # a previously assigned number is that wire: let it keep its number.
+        assigned = set(known.values())
+        for net in conn.nets:
+            name = getattr(net, "name", "") or ""
+            stripped = name[1:] if name.startswith("/") else name
+            if name not in known and stripped in assigned:
+                known[name] = stripped
     harness, warns = build_harness(conn, specs, numberer=numberer,
                                    known_numbers=known)
     res.warnings.extend(warns)
@@ -84,6 +90,11 @@ def _build_numbered_harness(board, pcbnew_module, specs_path, out_dir, stem, res
 def _wire_number_net_names(harness) -> tuple[dict[str, str], list[str]]:
     by_net: dict[str, set[str]] = {}
     for w in harness.wires:
+        if getattr(w.spec, "cable", ""):
+            # Cable cores are identified BY their net name (<CABLE>.<core> from
+            # the group bus) and already carry an intrinsic number; renaming
+            # the net would destroy the cable grouping on the next run.
+            continue
         number = str(w.spec.wire_no or "").strip()
         if number:
             by_net.setdefault(w.net, set()).add(number)
@@ -116,7 +127,15 @@ def _mapping_lookup(mapping, key):
 
 
 def _rename_net_object(obj, new_name) -> bool:
-    for method in ("SetNetname", "SetNetName", "SetName"):
+    """Rename a NETINFO-like object via its net-name setter.
+
+    Only net-specific setter names may be tried here. In real pcbnew,
+    PAD.SetName() is a legacy alias for SetNumber() — the PAD NUMBER — so a
+    generic SetName fallback rewrites pad numbers instead of net names, and
+    KiCad then silently DROPS a pad on save when its new number collides with
+    a sibling pad's (e.g. "002" vs "2"). Never widen this list with SetName.
+    """
+    for method in ("SetNetname", "SetNetName"):
         fn = getattr(obj, method, None)
         if callable(fn):
             try:
@@ -142,22 +161,21 @@ def _apply_board_net_names(board, renames: dict[str, str]) -> tuple[int, list[st
                     touched = True
             except Exception:
                 pass
+        # Pads and tracks derive their net name from the shared NETINFO object,
+        # so renaming that one object is both sufficient and the only safe move
+        # — the items themselves must never be "renamed" (see _rename_net_object).
         for fp in (getattr(board, "GetFootprints", lambda: [])() or []):
             pads = getattr(fp, "Pads", None) or getattr(fp, "GetPads", None)
             for pad in (pads() if callable(pads) else []):
                 get_name = getattr(pad, "GetNetname", None)
                 if callable(get_name) and get_name() == old_name:
                     net = getattr(pad, "GetNet", lambda: None)()
-                    renamed_item = _rename_net_object(pad, new_name)
-                    renamed_net = _rename_net_object(net, new_name)
-                    touched = renamed_item or renamed_net or touched
+                    touched = _rename_net_object(net, new_name) or touched
         for trk in (getattr(board, "GetTracks", lambda: [])() or []):
             get_name = getattr(trk, "GetNetname", None)
             if callable(get_name) and get_name() == old_name:
                 net = getattr(trk, "GetNet", lambda: None)()
-                renamed_item = _rename_net_object(trk, new_name)
-                renamed_net = _rename_net_object(net, new_name)
-                touched = renamed_item or renamed_net or touched
+                touched = _rename_net_object(net, new_name) or touched
         if touched:
             changed += 1
         else:
@@ -177,7 +195,8 @@ def apply_wire_names_to_board(board, *, pcbnew_module=None, specs_path=None,
     res = Result()
     out_dir, stem = _board_stem_and_dir(board, out_dir, stem)
     _source, _conn, harness, review_rows = _build_numbered_harness(
-        board, pcbnew_module, specs_path, out_dir, stem, res)
+        board, pcbnew_module, specs_path, out_dir, stem, res,
+        reclaim_net_name_numbers=True)
     write_review(harness, res.review_path, review_rows)
     if res.review_path not in res.outputs:
         res.outputs.append(res.review_path)
@@ -196,7 +215,8 @@ def apply_wire_names_to_board(board, *, pcbnew_module=None, specs_path=None,
     return res
 
 def generate_harness_docs(board, *, pcbnew_module=None, specs_path=None,
-                          out_dir=None, stem=None, emit_wireviz=True) -> Result:
+                          out_dir=None, stem=None, emit_wireviz=True,
+                          render_wireviz=True) -> Result:
     res = Result()
     out_dir, stem = _board_stem_and_dir(board, out_dir, stem)
 

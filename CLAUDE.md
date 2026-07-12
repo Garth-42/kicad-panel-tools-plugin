@@ -137,6 +137,14 @@ Verified against **real KiCad 10.0.4 headless** (integration test, every CI run)
   inherits Default's track width, so the per-name + Has-gate route is the only correct one)
 - **routed length**: `GetLength()` summed over tracks per net
 - kicad-cli netlist export carries `class="X,Default"` -> CLI route applies `classes:`
+- "Apply wire numbers to net names" survives reruns and saves
+  (`test_apply_wire_names_survives_reruns_and_saves`). Two real-pcbnew traps
+  live here: `PAD.SetName` is a legacy alias for `SetNumber` — the PAD NUMBER —
+  and KiCad silently *drops* a pad on save when its number collides numerically
+  with a sibling's ("002" vs "2"); and `board.GetNetsByName()` stays keyed by
+  the original names after a `NETINFO_ITEM.SetNetname`. So only ever rename the
+  NETINFO objects, never pads/tracks, and nets already named a previously
+  assigned number keep it (else every rerun churns P-001 -> 001 -> ...).
 
 Also verified: the WireViz YAML renders through **real WireViz 0.4** (CI job
 `wireviz-render`; `tests/test_wireviz_render.py`). Gotcha encoded there: WireViz
