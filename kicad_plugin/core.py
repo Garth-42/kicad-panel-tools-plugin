@@ -38,12 +38,6 @@ def _board_stem_and_dir(board, out_dir, stem):
     return (out_dir or os.getcwd()), (stem or "harness")
 
 
-def generate_harness_docs(board, *, pcbnew_module=None, specs_path=None,
-                          out_dir=None, stem=None, emit_wireviz=True,
-                          render_wireviz=True) -> Result:
-    res = Result()
-    out_dir, stem = _board_stem_and_dir(board, out_dir, stem)
-
 def _build_numbered_harness(board, pcbnew_module, specs_path, out_dir, stem, res):
     source = KicadBoardSource.from_board(board, pcbnew_module)
     conn = source.load()
@@ -196,7 +190,8 @@ def apply_wire_names_to_board(board, *, pcbnew_module=None, specs_path=None,
     return res
 
 def generate_harness_docs(board, *, pcbnew_module=None, specs_path=None,
-                          out_dir=None, stem=None, emit_wireviz=True) -> Result:
+                          out_dir=None, stem=None, emit_wireviz=True,
+                          render_wireviz=True) -> Result:
     res = Result()
     out_dir, stem = _board_stem_and_dir(board, out_dir, stem)
 
