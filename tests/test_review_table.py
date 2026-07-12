@@ -9,7 +9,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import tests.mock_pcbnew as mock  # noqa: E402
 from kicad_plugin.core import generate_harness_docs  # noqa: E402
 from harness.review import load_review  # noqa: E402
-from kicad_plugin.review_dialog import _read_csv, _write_csv  # noqa: E402
 
 
 def _rows(path):
@@ -54,18 +53,7 @@ def test_review_loader_warns_on_bad_rows():
         assert len(warnings) == 2, warnings
 
 
-def test_native_editor_csv_helpers_round_trip():
-    with tempfile.TemporaryDirectory() as td:
-        path = os.path.join(td, "review.csv")
-        columns = ["key", "wire_no", "notes"]
-        _write_csv(path, columns, [{"key": "/A", "wire_no": "101", "notes": "field"}])
-        rows, got_columns = _read_csv(path)
-        assert got_columns == columns
-        assert rows == [{"key": "/A", "wire_no": "101", "notes": "field"}]
-
-
 if __name__ == "__main__":
     test_plugin_writes_and_reloads_review_table()
     test_review_loader_warns_on_bad_rows()
-    test_native_editor_csv_helpers_round_trip()
     print("OK review table: generated, reloads edits, preserves notes, warns")

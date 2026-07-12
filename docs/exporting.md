@@ -4,8 +4,7 @@
 
 With the plugin [installed](installation.md) and your board open:
 
-**Tools → External Plugins → Generate harness docs**, or click the plugin toolbar
-button if KiCad shows it after plugin refresh.
+**Tools → External Plugins → Generate harness docs**
 
 A dialog reports the wire count, output paths, and any warnings. Next to your
 `.kicad_pcb` you get:
@@ -63,19 +62,17 @@ WM,,M-001,1.31 mm,,"16AWG_MOTOR,Default",J1,3,J2,3,Net-(J1-Pin_3),49.4
 
 The board plugin also writes `<board>_wire_review.csv`. This is the easiest
 place to review generated wire numbers without naming nets or copying generated
-KiCad net names into YAML. In pcbnew, the result dialog has **Edit Review
-Table**, **Open Review CSV**, and **Open Folder** buttons.
+KiCad net names into YAML. In pcbnew, the result dialog has **Open Review CSV**
+and **Open Folder** buttons.
 
 Typical loop:
 
-1. Click the plugin toolbar button, or run **Tools → External Plugins → Generate harness docs**.
-2. Click **Edit Review Table** to open a native KiCad grid editor, or open
-   `<board>_wire_review.csv` in a spreadsheet.
+1. Run **Tools → External Plugins → Generate harness docs**.
+2. Open `<board>_wire_review.csv`.
 3. Edit `wire_no` and `notes` as needed.
-4. Click **Save & Regenerate** in the native editor, or save the CSV and run the
-   plugin again if you used an external spreadsheet. Matching rows are applied
-   by the stable `key` column and the review CSV is rewritten with current
-   endpoints, nets, classes and lengths.
+4. Save the CSV.
+5. Run the plugin again; matching rows are applied by the stable `key` column and
+   the review CSV is rewritten with current endpoints, nets, classes and lengths.
 
 The generated `key` column is the same stable identity used for
 `wire_numbers.json`: a two-endpoint wire uses the net name, while a leg of a
