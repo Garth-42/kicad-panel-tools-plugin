@@ -1,8 +1,16 @@
 # harness_engine
 
-Generate wire-harness manufacturing docs (point-to-point wire list + WireViz diagram/BOM)
-from a KiCad design. The schematic/board stays the single source of truth; the docs are
-generated, never hand-maintained.
+Generate wire-harness manufacturing docs from a KiCad design: a point-to-point
+**wire list** (CSV), a **WireViz** harness diagram/BOM, and a **panel wiring
+diagram** (SVG) drawn from the board itself — device outlines, wire-colored
+runs, wire-number flags. The schematic/board stays the single source of truth;
+the docs are generated, never hand-maintained.
+
+Also in the box: a KiCad **project template** for 1:1 panel layouts (net
+classes as wire types, colored/width-scaled tracks), the **Panel device**
+footprint wizard + starter library for fast 2D device footprints, persistent
+wire numbers, and a **PCM package** (`scripts/build_pcm.py`) for one-click
+install. No third-party Python packages required (YAML reader bundled).
 
 ## Docs
 

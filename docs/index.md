@@ -29,13 +29,17 @@ WireViz YAML next to your board.
 
 ## Guide
 
-1. **[Installation](installation.md)** — the pcbnew plugin and/or the CLI.
+1. **[Installation](installation.md)** — via KiCad's Plugin and Content
+   Manager, or manual copy; plus the CLI.
 2. **[Setting up your KiCad project](kicad-setup.md)** — how to name net
    classes, label cables, and place connectors so the exporter understands
    your design.
-3. **[Exporting](exporting.md)** — running the plugin or CLI, what's in the
+3. **[Drawing the panel](panel-layout.md)** — the project template, the
+   Panel-device footprint wizard, datasheet-image footprints, and the
+   generated panel wiring diagram (SVG).
+4. **[Exporting](exporting.md)** — running the plugin or CLI, what's in the
    CSV, rendering the WireViz diagram, and how wire numbers stay stable.
-4. **[harness_specs.yaml reference](SPEC_SCHEMA.md)** — the full spec-file
+5. **[harness_specs.yaml reference](SPEC_SCHEMA.md)** — the full spec-file
    schema.
 
 ## Two ways to run

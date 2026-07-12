@@ -6,6 +6,19 @@ is useful for CI, scripting, or schematics without footprints.
 ## The pcbnew plugin (board route)
 
 Works on KiCad 9/10 (KiCad 7/8 supported with reduced net-class metadata).
+No third-party Python packages are needed — a YAML reader is bundled.
+
+### Option A — Plugin and Content Manager (recommended)
+
+1. Grab `harness_docs_pcm.zip` — from the repo's CI artifacts, or build it
+   yourself with `python3 scripts/build_pcm.py`.
+2. In KiCad's project manager: **Plugin and Content Manager →
+   Install from File…** and pick the zip.
+3. In the PCB editor: **Tools → External Plugins → Refresh** (or restart).
+   **Generate harness docs** appears in that menu, and the **Panel device**
+   wizard appears in the Footprint Editor's wizard list.
+
+### Option B — manual copy
 
 1. Open your board in the PCB editor and choose
    **Tools → External Plugins → Open Plugin Directory**. KiCad opens the exact
@@ -17,31 +30,15 @@ Works on KiCad 9/10 (KiCad 7/8 supported with reduced net-class metadata).
 
    (The plugin imports `harness` as a sibling — it won't load without it.)
 3. Back in the PCB editor: **Tools → External Plugins → Refresh**.
-   **Generate harness docs** now appears in that menu.
 
 Developer alternative: keep the repo wherever you like and symlink just
 `kicad_plugin/` into the plugin directory — the plugin resolves the repo root
 through the symlink, so `harness/` stays importable.
 
-### PyYAML note
-
-The **CSV export always works** — it needs nothing beyond KiCad itself.
-Two features need PyYAML available in *KiCad's own* Python:
-
-- reading `harness_specs.yaml`
-- writing the WireViz YAML
-
-Check in KiCad's scripting console with `import yaml`. If it's missing,
-install it into KiCad's interpreter (e.g. from the scripting console:
-`import pip; pip.main(['install', 'PyYAML'])`) — or just use the CSV.
-
 ## The CLI (netlist route)
 
-Needs Python ≥ 3.10 and PyYAML:
-
-```
-pip install -r requirements.txt      # just PyYAML
-```
+Needs Python ≥ 3.10; nothing to install (PyYAML is used if present, with a
+bundled fallback otherwise).
 
 Export a netlist from your schematic and run the tool from the repo root:
 

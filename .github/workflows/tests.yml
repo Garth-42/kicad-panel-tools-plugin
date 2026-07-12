@@ -33,6 +33,18 @@ jobs:
       - run: pip install PyYAML wireviz
       - run: python3 tests/test_wireviz_render.py
 
+  # Build the Plugin-and-Content-Manager package and keep it as an artifact
+  # (KiCad -> Plugin and Content Manager -> Install from File...).
+  pcm-package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/build_pcm.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: harness-docs-pcm
+          path: dist/harness_docs_pcm.zip
+
   # Full suite against real pcbnew, installed from the official KiCad 10 PPA.
   # pcbnew binds to the system python3, so PyYAML comes from apt, not pip.
   kicad-integration:
