@@ -11,8 +11,9 @@ import sys
 # us from (realpath resolves dev symlinks back to the repo).
 _HERE = os.path.dirname(os.path.realpath(__file__))
 _REPO_ROOT = os.path.dirname(_HERE)
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
+for _PATH in (_HERE, _REPO_ROOT):
+    if _PATH not in sys.path:
+        sys.path.insert(0, _PATH)
 
 try:
     import pcbnew
