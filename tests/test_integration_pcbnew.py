@@ -16,28 +16,34 @@ The fixture (tests/fixtures/kicad10_panel/) is a real KiCad 10 project:
 import os
 import sys
 
-import pytest
+try:
+    import pytest  # optional: CI runs these files as plain scripts, no pytest
+except ImportError:
+    pytest = None
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "kicad10_panel")
 
+
+def _module_skip(reason):
+    """Skip the whole module both under pytest and as a plain script."""
+    if pytest is not None:
+        pytest.skip(f"pcbnew integration: {reason}", allow_module_level=True)
+    print(f"SKIP pcbnew integration: {reason}")
+    raise SystemExit(0)
+
+
 try:
     import pcbnew
 except ImportError:
-    pytest.skip(
-        "pcbnew integration: pcbnew not importable (install KiCad)",
-        allow_module_level=True,
-    )
+    _module_skip("pcbnew not importable (install KiCad)")
 
 try:
     board = pcbnew.LoadBoard(os.path.join(FIXTURE, "Untitled.kicad_pcb"))
 except Exception as e:
-    pytest.skip(
-        f"pcbnew integration: fixture not loadable by this KiCad "
-        f"({pcbnew.GetBuildVersion()}): {e}",
-        allow_module_level=True,
-    )
+    _module_skip(f"fixture not loadable by this KiCad "
+                 f"({pcbnew.GetBuildVersion()}): {e}")
 
 from harness.ingest import KicadBoardSource  # noqa: E402
 from kicad_plugin.core import apply_wire_names_to_board, generate_harness_docs  # noqa: E402
