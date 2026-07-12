@@ -37,6 +37,9 @@ def main():
         plugin = _ActionPlugin.registered[0]
         assert plugin.name == "Generate harness docs"
         assert plugin.category == "Documentation"
+        assert plugin.show_toolbar_button is True
+        assert plugin.icon_file_name.endswith(os.path.join("kicad_plugin", "icon.xpm"))
+        assert os.path.exists(plugin.icon_file_name)
         assert hasattr(mod, "HarnessDocsPlugin")
     finally:
         sys.modules.pop("pcbnew", None)
