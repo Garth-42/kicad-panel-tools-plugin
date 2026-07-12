@@ -94,6 +94,22 @@ def _wire_number_net_names(harness) -> tuple[dict[str, str], list[str]]:
     return names, warnings
 
 
+def _mapping_lookup(mapping, key):
+    """Return mapping[key] across Python dicts and KiCad SWIG map wrappers."""
+    if mapping is None:
+        return None
+    get = getattr(mapping, "get", None)
+    if callable(get):
+        try:
+            return get(key)
+        except Exception:
+            pass
+    try:
+        return mapping[key]
+    except Exception:
+        return None
+
+
 def _rename_net_object(obj, new_name) -> bool:
     for method in ("SetNetname", "SetNetName", "SetName"):
         fn = getattr(obj, method, None)
@@ -116,7 +132,7 @@ def _apply_board_net_names(board, renames: dict[str, str]) -> tuple[int, list[st
         nets_by_name = getattr(board, "GetNetsByName", None)
         if callable(nets_by_name):
             try:
-                netinfo = nets_by_name().get(old_name)
+                netinfo = _mapping_lookup(nets_by_name(), old_name)
                 if netinfo is not None and _rename_net_object(netinfo, new_name):
                     touched = True
             except Exception:
