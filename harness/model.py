@@ -69,3 +69,24 @@ class Harness:
         for w in self.wires:
             out.setdefault(w.spec.cable or "(loose)", []).append(w)
         return out
+
+
+@dataclass
+class FootprintGeometry:
+    """Physical 2D representation of one placed component (board coords, mm)."""
+    ref: str
+    x: float = 0.0
+    y: float = 0.0
+    rot_deg: float = 0.0
+    outlines: list = field(default_factory=list)  # polylines: [[(x,y), ...], ...]
+    pads: dict = field(default_factory=dict)      # pin -> (x, y, dia_mm)
+
+
+@dataclass
+class BoardGeometry:
+    """Geometry needed to draw a wiring diagram. Plain data, mm units —
+    which physical view produced it (pcbnew today) is the adapter's business."""
+    footprints: dict = field(default_factory=dict)  # ref -> FootprintGeometry
+    tracks: list = field(default_factory=list)  # (net, (x1,y1), (x2,y2), w_mm)
+    edges: list = field(default_factory=list)   # board outline polylines
+    title: dict = field(default_factory=dict)   # title/rev/company/comment
