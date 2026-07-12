@@ -39,7 +39,9 @@ for generating 2D panel-device footprints (body + named terminal rows).
 3. *(optional)* Drop a `harness_specs.yaml` next to the board mapping net classes
    to gauge/color/cable (see `examples/classes.specs.yaml`).
 4. **Tools → External Plugins → Generate harness docs.** A dialog reports the wire
-   count and output paths.
+   count and output paths. Use **Open Review CSV** to edit generated wire
+   numbers/notes in a spreadsheet, save it, then run the plugin again to apply
+   those edits.
 
 ## Headless test (KiCad's Python)
 

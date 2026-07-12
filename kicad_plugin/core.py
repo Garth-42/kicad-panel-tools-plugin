@@ -11,6 +11,8 @@ from harness.engine import build_harness
 from harness.numbering import SCHEMES
 from harness.emit import write_csv
 from harness.persist import WireNumberStore, collect_numbers, WIRE_NUMBERS_NAME
+from harness.review import (apply_review, load_review, review_numbers,
+                            review_path, write_review)
 
 DEFAULT_SPECS_NAME = "harness_specs.yaml"  # looked for next to the board
 
@@ -20,6 +22,7 @@ class Result:
     wire_count: int = 0
     outputs: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
+    review_path: str = ""
 
 
 def _board_stem_and_dir(board, out_dir, stem):
@@ -61,10 +64,18 @@ def generate_harness_docs(board, *, pcbnew_module=None, specs_path=None,
     #    attached to the same wire across re-exports; commit it with the board.
     scheme = (getattr(specs, "numbering", "") or "global")
     numberer = SCHEMES.get(scheme, SCHEMES["global"])()
+    review_csv = review_path(out_dir, stem)
+    res.review_path = review_csv
+    review_rows, review_warns = load_review(review_csv)
+    res.warnings.extend(review_warns)
+
     store = WireNumberStore(os.path.join(out_dir, WIRE_NUMBERS_NAME))
+    known = store.load()
+    known.update(review_numbers(review_rows))  # review CSV is the editable front door
     harness, warns = build_harness(conn, specs, numberer=numberer,
-                                   known_numbers=store.load())
+                                   known_numbers=known)
     res.warnings.extend(warns)
+    res.warnings.extend(apply_review(harness, review_rows))
     res.wire_count = len(harness.wires)
     store.save(collect_numbers(harness))
     if store.warning:
@@ -76,6 +87,9 @@ def generate_harness_docs(board, *, pcbnew_module=None, specs_path=None,
     csv_path = os.path.join(out_dir, f"{stem}_wirelist.csv")
     write_csv(harness, csv_path)
     res.outputs.append(csv_path)
+
+    write_review(harness, review_csv, review_rows)
+    res.outputs.append(review_csv)
 
     if emit_wireviz:
         try:
