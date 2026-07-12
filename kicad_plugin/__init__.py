@@ -60,15 +60,23 @@ def _report(res):
         print(msg)
 
 
-def _in_kicad_gui() -> bool:
-    """True only when a KiCad wxApp is running. Prevents ActionPlugin.register()
-    from asserting during headless `python -m kicad_plugin ...` runs."""
+def _register_action_plugin():
+    """Register with pcbnew when KiCad imports the package.
+
+    KiCad's plugin loader is the authority on when ActionPlugins should be
+    registered.  Do not require a wx.App here: some KiCad/PCM load paths import
+    Python plugins before wx.GetApp() is visible to Python, which silently hid
+    the Tools -> External Plugins menu item.  Headless runs that can import
+    pcbnew (for example ``python -m kicad_plugin``) may still reject
+    ActionPlugin.register(), so registration failures are reported but do not
+    make the command-line wrapper unusable.
+    """
+    if pcbnew is None:
+        return
     try:
-        import wx
-        return wx.GetApp() is not None
-    except Exception:
-        return False
+        HarnessDocsPlugin().register()
+    except Exception as e:
+        print(f"Harness docs KiCad action plugin not registered: {e}", file=sys.stderr)
 
 
-if pcbnew is not None and _in_kicad_gui():
-    HarnessDocsPlugin().register()
+_register_action_plugin()
