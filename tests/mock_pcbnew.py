@@ -18,6 +18,7 @@ class _Net:
         self._nc = _NetClass(netclass, width_nm, color)
     def GetNetClassName(self): return self._c
     def GetNetClass(self): return self._nc
+    def SetNetname(self, name): self._n = name
 
 class _Pad:
     def __init__(self, number, netname, netclass="", width_nm=0, color=None):
@@ -39,14 +40,26 @@ class _Track:
         self._net, self._len, self._via = netname, length_nm, is_via
     def GetClass(self): return "PCB_VIA" if self._via else "PCB_TRACK"
     def GetNetname(self): return self._net
+    def GetNet(self): return _Net(self._net)
+    def SetNetname(self, name): self._net = name
     def GetLength(self): return self._len
+
+class _SwigNetMap:
+    """Dict-like enough to mimic KiCad SWIG maps, which may not expose .get()."""
+    def __init__(self, nets): self._nets = nets
+    def __getitem__(self, name): return self._nets[name]
 
 class _Board:
     def __init__(self, footprints, tracks, filename=""):
         self._fp, self._tk, self._fn = footprints, tracks, filename
+        self._nets = {}
+        for fp in footprints:
+            for pad in fp.Pads():
+                self._nets.setdefault(pad.GetNetname(), pad.GetNet())
     def GetFileName(self): return self._fn
     def GetFootprints(self): return self._fp
     def GetTracks(self): return self._tk
+    def GetNetsByName(self): return _SwigNetMap(self._nets)
 
 # module-level helper the adapter uses
 def ToMM(nm): return nm / 1_000_000.0

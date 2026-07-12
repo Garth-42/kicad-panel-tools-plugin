@@ -20,7 +20,7 @@ PCM guidance says the plugin itself must live directly inside that plugins
 directory, not inside a second-level subdirectory. PCM_INIT is therefore a
 generated top-level action plugin entry point: it puts the install directory on
 sys.path so the bundled `harness` package resolves as a top-level import,
-imports the footprint wizard, and registers the pcbnew action plugin.
+imports the footprint wizard, and registers the pcbnew action plugins.
 """
 import json
 import os
@@ -58,6 +58,22 @@ from .core import generate_harness_docs
 from . import panel_device_wizard  # noqa: F401,E402  registers the footprint wizard
 
 _Base = pcbnew.ActionPlugin if pcbnew is not None else object
+
+
+def _have_wx_app():
+    try:
+        import wx
+    except Exception:
+        return False
+    app_cls = getattr(wx, "App", None)
+    get_instance = getattr(app_cls, "GetInstance", None) if app_cls is not None else None
+    try:
+        if callable(get_instance):
+            return get_instance() is not None
+        get_app = getattr(wx, "GetApp", None)
+        return callable(get_app) and get_app() is not None
+    except Exception:
+        return False
 
 
 class HarnessDocsPlugin(_Base):
@@ -138,7 +154,7 @@ def _report(res):
 
 
 def _register_action_plugin():
-    if pcbnew is None:
+    if pcbnew is None or not _have_wx_app():
         return
     try:
         HarnessDocsPlugin().register()
@@ -147,6 +163,38 @@ def _register_action_plugin():
 
 
 _register_action_plugin()
+'''
+
+PCM_WIRE_NAMES = '''\
+
+from .core import apply_wire_names_to_board  # noqa: E402
+
+
+class WireNamesPlugin(_Base):
+    def defaults(self):
+        self.name = "Apply wire numbers to net names"
+        self.category = "Documentation"
+        self.description = "Generate wire numbers and rename board nets to match"
+        icon = os.path.join(_HERE, "icon.xpm")
+        self.show_toolbar_button = os.path.exists(icon)
+        self.icon_file_name = icon
+
+    def Run(self):
+        board = pcbnew.GetBoard()
+        res = apply_wire_names_to_board(board, pcbnew_module=pcbnew)
+        _report(res)
+
+
+def _register_wire_names_plugin():
+    if pcbnew is None or not _have_wx_app():
+        return
+    try:
+        WireNamesPlugin().register()
+    except Exception as e:
+        print(f"WireNamesPlugin not registered: {e}", file=sys.stderr)
+
+
+_register_wire_names_plugin()
 '''
 
 
@@ -170,7 +218,7 @@ def main():
     with zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED) as z:
         z.write(meta_path, "metadata.json")
         z.write(os.path.join(ROOT, "pcm", "icon.png"), "resources/icon.png")
-        z.writestr("plugins/__init__.py", PCM_INIT)
+        z.writestr("plugins/__init__.py", PCM_INIT + PCM_WIRE_NAMES)
         for name in ("core.py", "panel_device_wizard.py", "review_dialog.py", "__main__.py", "icon.xpm"):
             z.write(os.path.join(ROOT, "kicad_plugin", name), os.path.join("plugins", name))
         _add_tree(z, os.path.join(ROOT, "harness"), "plugins/harness")
