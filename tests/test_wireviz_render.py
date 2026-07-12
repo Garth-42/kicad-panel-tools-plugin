@@ -77,3 +77,33 @@ if __name__ == "__main__":
         print("OK wireviz render: png/svg/html/BOM produced, MPN in BOM")
     else:
         print("OK wireviz yaml structure (render skipped)")
+
+
+def test_vendored_wireviz_renderer_outputs_or_cleanly_requires_graphviz():
+    h, conn = _harness()
+    with tempfile.TemporaryDirectory() as td:
+        path = os.path.join(td, "h.yaml")
+        write_wireviz(h, path, components=conn.components)
+        from harness.wireviz import render_wireviz
+        old_path = os.environ.get("PATH", "")
+        try:
+            # Hide a system wireviz executable so this exercises the vendored path.
+            os.environ["PATH"] = os.pathsep.join(
+                p for p in old_path.split(os.pathsep)
+                if not os.path.exists(os.path.join(p, "wireviz"))
+            )
+            if not shutil.which("dot"):
+                try:
+                    render_wireviz(path)
+                except RuntimeError as e:
+                    assert "Graphviz" in str(e) or "dot" in str(e)
+                else:
+                    raise AssertionError("render should require graphviz/dot")
+                return
+            outs = render_wireviz(path)
+        finally:
+            os.environ["PATH"] = old_path
+        assert {os.path.splitext(p)[1] for p in outs} >= {".png", ".svg", ".html", ".tsv"}
+        for out in outs:
+            assert os.path.exists(out) and os.path.getsize(out) > 0, out
+        assert "ABB-M3" in open(os.path.join(td, "h.bom.tsv"), encoding="utf-8").read()

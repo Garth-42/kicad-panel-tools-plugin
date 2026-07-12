@@ -84,11 +84,12 @@ old rows.
 
 ## Rendering the WireViz diagram
 
-On any machine with [WireViz](https://github.com/wireviz/WireViz) and
-Graphviz installed:
+When Graphviz `dot` is installed, **Generate harness docs** renders the emitted
+WireViz YAML directly via the bundled renderer (or the upstream `wireviz` CLI
+when it is available). The CLI route can do the same with `--render-wireviz`:
 
 ```
-wireviz design_harness.yaml
+python -m harness design.net.xml --wireviz design_harness.yaml --render-wireviz
 ```
 
 This produces `design_harness.png`, `.svg`, `.html` (a shareable page with
