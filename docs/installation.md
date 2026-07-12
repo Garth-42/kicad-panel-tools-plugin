@@ -10,10 +10,15 @@ No third-party Python packages are needed — a YAML reader is bundled.
 
 ### Option A — Plugin and Content Manager (recommended)
 
-1. Grab `harness_docs_pcm.zip` — from the repo's CI artifacts, or build it
-   yourself with `python3 scripts/build_pcm.py`.
+1. Grab the package zip — download the **harness-docs-pcm** artifact from the
+   repo's CI (the downloaded `harness-docs-pcm.zip` is the installable
+   package as-is), or build `dist/harness_docs_pcm.zip` yourself with
+   `python3 scripts/build_pcm.py`.
 2. In KiCad's project manager: **Plugin and Content Manager →
-   Install from File…** and pick the zip.
+   Install from File…** and pick the zip. If PCM says *"Archive does not
+   contain valid metadata.json file"*, the zip is a wrapper around the real
+   package (e.g. an artifact downloaded from a CI run before this fix) —
+   extract it once and install the zip found inside.
 3. In the PCB editor: **Tools → External Plugins → Refresh** (or restart).
    **Generate harness docs** appears in that menu, and the **Panel device**
    wizard appears in the Footprint Editor's wizard list.

@@ -35,15 +35,27 @@ jobs:
 
   # Build the Plugin-and-Content-Manager package and keep it as an artifact
   # (KiCad -> Plugin and Content Manager -> Install from File...).
+  # GitHub wraps every artifact download in a zip of its own, so uploading
+  # the .zip would hand users a zip-inside-a-zip that PCM rejects with
+  # "Archive does not contain valid metadata.json file". Uploading the
+  # EXTRACTED tree instead makes GitHub's wrapper zip itself the
+  # installable package (metadata.json at the archive root).
   pcm-package:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - run: python3 scripts/build_pcm.py
+      - name: Validate metadata.json against the official PCM schema
+        run: |
+          pip install jsonschema
+          curl -sSL -o /tmp/pcm_schema.json https://go.kicad.org/pcm/schemas/v1
+          python3 -c "import json, jsonschema; jsonschema.validate(json.load(open('pcm/metadata.json')), json.load(open('/tmp/pcm_schema.json'))); print('metadata.json: schema-valid')"
+      - name: Stage extracted package tree for upload
+        run: python3 -m zipfile -e dist/harness_docs_pcm.zip dist/pcm/
       - uses: actions/upload-artifact@v4
         with:
           name: harness-docs-pcm
-          path: dist/harness_docs_pcm.zip
+          path: dist/pcm/
 
   # Full suite against real pcbnew, installed from the official KiCad 10 PPA.
   # pcbnew binds to the system python3, so PyYAML comes from apt, not pip.
