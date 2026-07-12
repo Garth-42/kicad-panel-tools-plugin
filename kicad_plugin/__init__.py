@@ -24,6 +24,8 @@ except ImportError:            # allows importing this module outside KiCad (tes
     pcbnew = None
 
 from .core import generate_harness_docs
+from . import panel_device_wizard  # noqa: F401  registers the footprint wizard
+                                   # (it self-gates on pcbnew + FootprintWizardBase)
 
 _Base = pcbnew.ActionPlugin if pcbnew is not None else object
 
