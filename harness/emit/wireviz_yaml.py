@@ -108,7 +108,8 @@ def build_wireviz(harness: Harness, components: dict | None = None) -> dict:
 
 
 def write_wireviz(harness: Harness, path: str, components: dict | None = None) -> None:
-    import yaml  # lazy import
+    from ..yamlio import import_yaml  # lazy; falls back to vendored copy
+    yaml = import_yaml()
     with open(path, "w", encoding="utf-8") as fh:
         yaml.safe_dump(build_wireviz(harness, components), fh,
                        sort_keys=False, allow_unicode=True)

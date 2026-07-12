@@ -1,3 +1,6 @@
+# No required third-party packages: a pure-Python PyYAML is vendored under
+# harness/_vendor/ as a fallback. Installing the real thing is still
+# preferred where you can (newer, C-accelerated):
 PyYAML>=6.0
 # Optional, for the future in-editor adapter (KiCad 11+ schematic API):
 # kicad-python

@@ -56,7 +56,8 @@ class SpecStore:
 
     @classmethod
     def from_file(cls, path: str) -> "SpecStore":
-        import yaml  # lazy: KiCad's bundled Python may lack PyYAML
+        from .yamlio import import_yaml  # lazy; falls back to vendored copy
+        yaml = import_yaml()
         with open(path, encoding="utf-8") as fh:
             data = yaml.safe_load(fh) or {}
         return cls(defaults=data.get("defaults", {}),
