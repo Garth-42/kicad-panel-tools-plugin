@@ -2,11 +2,9 @@
 
 PCM extracts the zip's plugins/ tree into 3rdparty/plugins/<identifier>/ and
 pcbnew imports that directory as ONE package -- but only if it carries a
-top-level __init__.py (this was missed once: the package installed cleanly
-yet nothing appeared under Tools -> External Plugins). Emulate that loader:
-build the zip, extract plugins/ into a dir named like a munged identifier,
-import its __init__ via importlib the way kicadplugins.i does, and assert
-the action plugin + wizard modules actually got imported.
+top-level __init__.py. KiCad's PCM guidance also says the plugin itself must be
+placed directly inside plugins/, not in a second-level subdirectory. Emulate the
+loader, import the generated package, and assert the action plugin registers.
 """
 import importlib.util
 import os
@@ -14,9 +12,18 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import types
 import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+class _ActionPlugin:
+    registered = []
+
+    def register(self):
+        self.defaults()
+        self.__class__.registered.append(self)
 
 
 def main():
@@ -28,8 +35,13 @@ def main():
     assert "metadata.json" in names, "metadata.json must sit at the archive root"
     assert "plugins/__init__.py" in names, \
         "plugins/ needs a top-level __init__.py or pcbnew never imports the package"
+    assert "plugins/core.py" in names, "action support must be directly in plugins/"
+    assert "plugins/panel_device_wizard.py" in names, "wizard must be directly in plugins/"
+    assert not any(n.startswith("plugins/kicad_plugin/") for n in names), \
+        "PCM action plugin must not be hidden inside a second-level plugin directory"
 
     tmp = tempfile.mkdtemp(prefix="pcm_pkg_")
+    old_pcbnew = sys.modules.get("pcbnew")
     try:
         # Install like PCM: plugins/* -> 3rdparty/plugins/<identifier>/*.
         # Keep the dashes: pcbnew's loader must cope with non-identifier chars.
@@ -45,8 +57,10 @@ def main():
         # Import like kicadplugins.i: the directory as one package, by path.
         # Shadowing matters: the extracted copies must win over the repo tree.
         for m in [m for m in sys.modules if m.split(".")[0] in
-                  ("kicad_plugin", "harness")]:
+                  ("kicad_plugin", "harness") or m.startswith("com_github_pcm_test")]:
             del sys.modules[m]
+        _ActionPlugin.registered.clear()
+        sys.modules["pcbnew"] = types.SimpleNamespace(ActionPlugin=_ActionPlugin)
         spec = importlib.util.spec_from_file_location(
             "com_github_pcm_test", os.path.join(pkg_dir, "__init__.py"),
             submodule_search_locations=[pkg_dir])
@@ -54,20 +68,22 @@ def main():
         sys.modules[spec.name] = mod
         spec.loader.exec_module(mod)
 
-        kp = sys.modules.get("kicad_plugin")
-        assert kp is not None, "PCM __init__ must import kicad_plugin"
-        assert os.path.realpath(kp.__file__).startswith(os.path.realpath(pkg_dir)), \
-            f"imported the repo tree, not the extracted package: {kp.__file__}"
-        assert hasattr(kp, "HarnessDocsPlugin")
-        assert "kicad_plugin.panel_device_wizard" in sys.modules, \
+        assert hasattr(mod, "HarnessDocsPlugin")
+        assert len(_ActionPlugin.registered) == 1
+        assert _ActionPlugin.registered[0].name == "Generate harness docs"
+        assert "com_github_pcm_test.panel_device_wizard" in sys.modules, \
             "wizard module must be imported so it can self-register"
         h = sys.modules.get("harness")
         assert h is not None and os.path.realpath(h.__file__).startswith(
             os.path.realpath(pkg_dir)), "harness must resolve from the package"
     finally:
+        if old_pcbnew is None:
+            sys.modules.pop("pcbnew", None)
+        else:
+            sys.modules["pcbnew"] = old_pcbnew
         shutil.rmtree(tmp, ignore_errors=True)
 
-    print("OK pcm package loads via the pcbnew 3rdparty loader path")
+    print("OK pcm package loads and registers from the top-level plugins directory")
 
 
 if __name__ == "__main__":
