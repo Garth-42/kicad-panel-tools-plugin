@@ -24,7 +24,7 @@ try:
 except ImportError:            # allows importing this module outside KiCad (tests)
     pcbnew = None
 
-from .core import generate_harness_docs
+from .core import apply_wire_names_to_board, generate_harness_docs
 from . import panel_device_wizard  # noqa: F401  registers the footprint wizard
                                    # (it self-gates on pcbnew + FootprintWizardBase)
 
@@ -48,6 +48,21 @@ class HarnessDocsPlugin(_Base):
         _report(res)
 
 
+
+class WireNamesPlugin(_Base):
+    def defaults(self):
+        self.name = "Apply wire numbers to net names"
+        self.category = "Documentation"
+        self.description = "Generate wire numbers and rename board nets to match"
+        icon = os.path.join(_HERE, "icon.xpm")
+        self.show_toolbar_button = os.path.exists(icon)
+        self.icon_file_name = icon
+
+    def Run(self):
+        board = pcbnew.GetBoard()
+        res = apply_wire_names_to_board(board, pcbnew_module=pcbnew)
+        _report_title(res, "Wire names")
+
 def _open_path(path):
     if not path:
         return
@@ -59,7 +74,10 @@ def _open_path(path):
         subprocess.Popen(["xdg-open", path])
 
 
-def _report(res):
+def _report_title(res, title="Harness docs"):
+    return _report(res, title=title)
+
+def _report(res, title="Harness docs"):
     lines = [f"{res.wire_count} wires exported.", "", "Wrote:"]
     lines += [f"  {p}" for p in res.outputs]
     if res.review_path:
@@ -69,7 +87,7 @@ def _report(res):
     msg = "\n".join(lines)
     try:
         import wx
-        dlg = wx.Dialog(None, title="Harness docs")
+        dlg = wx.Dialog(None, title=title)
         panel = wx.Panel(dlg)
         text = wx.TextCtrl(panel, value=msg, style=wx.TE_MULTILINE | wx.TE_READONLY)
         buttons = wx.BoxSizer(wx.HORIZONTAL)
@@ -95,8 +113,7 @@ def _report(res):
         print(msg)
 
 
-
-def _report_with_native_editor(res):
+def _report_with_native_editor(res, title="Harness docs"):
     lines = [f"{res.wire_count} wires exported.", "", "Wrote:"]
     lines += [f"  {p}" for p in res.outputs]
     if res.review_path:
@@ -107,7 +124,7 @@ def _report_with_native_editor(res):
     try:
         import wx
         from .review_dialog import edit_review_csv
-        dlg = wx.Dialog(None, title="Harness docs")
+        dlg = wx.Dialog(None, title=title)
         panel = wx.Panel(dlg)
         text = wx.TextCtrl(panel, value=msg, style=wx.TE_MULTILINE | wx.TE_READONLY)
         buttons = wx.BoxSizer(wx.HORIZONTAL)
@@ -180,6 +197,7 @@ def _register_action_plugin():
         return
     try:
         HarnessDocsPlugin().register()
+        WireNamesPlugin().register()
     except Exception as e:
         print(f"Harness docs KiCad action plugin not registered: {e}", file=sys.stderr)
 

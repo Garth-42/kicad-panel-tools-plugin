@@ -18,6 +18,7 @@ class _Net:
         self._nc = _NetClass(netclass, width_nm, color)
     def GetNetClassName(self): return self._c
     def GetNetClass(self): return self._nc
+    def SetNetname(self, name): self._n = name
 
 class _Pad:
     def __init__(self, number, netname, netclass="", width_nm=0, color=None):
@@ -39,6 +40,8 @@ class _Track:
         self._net, self._len, self._via = netname, length_nm, is_via
     def GetClass(self): return "PCB_VIA" if self._via else "PCB_TRACK"
     def GetNetname(self): return self._net
+    def GetNet(self): return _Net(self._net)
+    def SetNetname(self, name): self._net = name
     def GetLength(self): return self._len
 
 class _Board:

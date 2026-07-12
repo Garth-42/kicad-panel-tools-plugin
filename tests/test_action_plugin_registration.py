@@ -33,14 +33,20 @@ def main():
 
     try:
         mod = importlib.import_module("kicad_plugin")
-        assert len(_ActionPlugin.registered) == 1
+        assert len(_ActionPlugin.registered) == 2
         plugin = _ActionPlugin.registered[0]
+        wire_plugin = _ActionPlugin.registered[1]
         assert plugin.name == "Generate harness docs"
         assert plugin.category == "Documentation"
         assert plugin.show_toolbar_button is True
         assert plugin.icon_file_name.endswith(os.path.join("kicad_plugin", "icon.xpm"))
         assert os.path.exists(plugin.icon_file_name)
+        assert wire_plugin.name == "Apply wire numbers to net names"
+        assert wire_plugin.show_toolbar_button is True
+        assert wire_plugin.icon_file_name.endswith(os.path.join("kicad_plugin", "icon.xpm"))
+        assert os.path.exists(wire_plugin.icon_file_name)
         assert hasattr(mod, "HarnessDocsPlugin")
+        assert hasattr(mod, "WireNamesPlugin")
     finally:
         sys.modules.pop("pcbnew", None)
         sys.modules.pop("wx", None)
