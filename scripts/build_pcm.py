@@ -9,6 +9,8 @@ Zip layout (what PCM expects):
     plugins/__init__.py          generated action plugin entry point
     plugins/core.py              plugin implementation support
     plugins/panel_device_wizard.py
+    plugins/review_dialog.py
+    plugins/icon.xpm              action toolbar icon
     plugins/harness/...          engine (incl. vendored yaml fallback)
 
 Install: KiCad -> Plugin and Content Manager -> Install from File...
@@ -40,6 +42,7 @@ that directory as one Python package. Keep the action plugin at this top level
 bundled harness package resolves, then register the pcbnew action plugin.
 """
 import os
+import subprocess
 import sys
 
 _HERE = os.path.dirname(os.path.realpath(__file__))
@@ -62,27 +65,76 @@ class HarnessDocsPlugin(_Base):
         self.name = "Generate harness docs"
         self.category = "Documentation"
         self.description = "Export a wire list (+ WireViz) from the open board"
-        icon = os.path.join(_HERE, "icon.png")
+        icon = os.path.join(_HERE, "icon.xpm")
         self.show_toolbar_button = os.path.exists(icon)
         self.icon_file_name = icon
 
     def Run(self):
         board = pcbnew.GetBoard()
-        res = generate_harness_docs(board, pcbnew_module=pcbnew)
-        _report(res)
+        while True:
+            res = generate_harness_docs(board, pcbnew_module=pcbnew)
+            if _report(res) != "regenerate":
+                break
+
+
+def _open_path(path):
+    if not path:
+        return
+    if sys.platform.startswith("win"):
+        os.startfile(path)  # type: ignore[attr-defined]
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", path])
+    else:
+        subprocess.Popen(["xdg-open", path])
 
 
 def _report(res):
     lines = [f"{res.wire_count} wires exported.", "", "Wrote:"]
     lines += [f"  {p}" for p in res.outputs]
+    if res.review_path:
+        lines += ["", "Use Edit Review Table to change wire_no/notes in KiCad, or Open Review CSV for a spreadsheet."]
     if res.warnings:
         lines += ["", "Warnings:"] + [f"  {w}" for w in res.warnings]
     msg = "\\n".join(lines)
     try:
         import wx
-        wx.MessageBox(msg, "Harness docs")
+        from .review_dialog import edit_review_csv
+        dlg = wx.Dialog(None, title="Harness docs")
+        panel = wx.Panel(dlg)
+        text = wx.TextCtrl(panel, value=msg, style=wx.TE_MULTILINE | wx.TE_READONLY)
+        buttons = wx.BoxSizer(wx.HORIZONTAL)
+        action = {"value": "close"}
+        if res.review_path:
+            edit_review = wx.Button(panel, label="Edit Review Table")
+            open_review = wx.Button(panel, label="Open Review CSV")
+            open_folder = wx.Button(panel, label="Open Folder")
+
+            def edit_and_regenerate(_evt):
+                if edit_review_csv(dlg, res.review_path):
+                    action["value"] = "regenerate"
+                    dlg.EndModal(wx.ID_OK)
+
+            edit_review.Bind(wx.EVT_BUTTON, edit_and_regenerate)
+            open_review.Bind(wx.EVT_BUTTON, lambda _evt: _open_path(res.review_path))
+            open_folder.Bind(wx.EVT_BUTTON, lambda _evt: _open_path(os.path.dirname(res.review_path)))
+            buttons.Add(edit_review, 0, wx.RIGHT, 8)
+            buttons.Add(open_review, 0, wx.RIGHT, 8)
+            buttons.Add(open_folder, 0, wx.RIGHT, 8)
+        close = wx.Button(panel, wx.ID_OK, "Close")
+        close.Bind(wx.EVT_BUTTON, lambda _evt: dlg.EndModal(wx.ID_OK))
+        buttons.AddStretchSpacer()
+        buttons.Add(close, 0)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(text, 1, wx.EXPAND | wx.ALL, 10)
+        sizer.Add(buttons, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        panel.SetSizer(sizer)
+        dlg.SetSize((700, 420))
+        dlg.ShowModal()
+        dlg.Destroy()
+        return action["value"]
     except Exception:
         print(msg)
+    return "close"
 
 
 def _register_action_plugin():
@@ -119,7 +171,7 @@ def main():
         z.write(meta_path, "metadata.json")
         z.write(os.path.join(ROOT, "pcm", "icon.png"), "resources/icon.png")
         z.writestr("plugins/__init__.py", PCM_INIT)
-        for name in ("core.py", "panel_device_wizard.py", "__main__.py"):
+        for name in ("core.py", "panel_device_wizard.py", "review_dialog.py", "__main__.py", "icon.xpm"):
             z.write(os.path.join(ROOT, "kicad_plugin", name), os.path.join("plugins", name))
         _add_tree(z, os.path.join(ROOT, "harness"), "plugins/harness")
 
@@ -128,6 +180,8 @@ def main():
     assert "plugins/__init__.py" in names
     assert "plugins/core.py" in names
     assert "plugins/panel_device_wizard.py" in names
+    assert "plugins/review_dialog.py" in names
+    assert "plugins/icon.xpm" in names
     assert "plugins/kicad_plugin/__init__.py" not in names
     assert "plugins/harness/engine.py" in names
     assert "plugins/harness/_vendor/yaml/__init__.py" in names
