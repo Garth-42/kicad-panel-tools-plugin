@@ -16,31 +16,37 @@ The fixture (tests/fixtures/kicad10_panel/) is a real KiCad 10 project:
 import os
 import sys
 
-import pytest
+try:
+    import pytest  # optional: CI runs these files as plain scripts, no pytest
+except ImportError:
+    pytest = None
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "kicad10_panel")
 
+
+def _module_skip(reason):
+    """Skip the whole module both under pytest and as a plain script."""
+    if pytest is not None:
+        pytest.skip(f"pcbnew integration: {reason}", allow_module_level=True)
+    print(f"SKIP pcbnew integration: {reason}")
+    raise SystemExit(0)
+
+
 try:
     import pcbnew
 except ImportError:
-    pytest.skip(
-        "pcbnew integration: pcbnew not importable (install KiCad)",
-        allow_module_level=True,
-    )
+    _module_skip("pcbnew not importable (install KiCad)")
 
 try:
     board = pcbnew.LoadBoard(os.path.join(FIXTURE, "Untitled.kicad_pcb"))
 except Exception as e:
-    pytest.skip(
-        f"pcbnew integration: fixture not loadable by this KiCad "
-        f"({pcbnew.GetBuildVersion()}): {e}",
-        allow_module_level=True,
-    )
+    _module_skip(f"fixture not loadable by this KiCad "
+                 f"({pcbnew.GetBuildVersion()}): {e}")
 
 from harness.ingest import KicadBoardSource  # noqa: E402
-from kicad_plugin.core import generate_harness_docs  # noqa: E402
+from kicad_plugin.core import apply_wire_names_to_board, generate_harness_docs  # noqa: E402
 
 
 def test_board_adapter_reads_netclass_color_width_length():
@@ -138,6 +144,44 @@ def test_load_geometry():
     assert widths == {0.25}, widths
 
 
+def test_apply_wire_names_survives_reruns_and_saves(tmp_dir):
+    """Regression against REAL pcbnew: applying wire numbers to net names twice
+    must never rewrite pad numbers. board.GetNetsByName() stays keyed by the
+    original net names after a rename, so a second apply run used to fall into
+    the pad/track fallback, where the generic SetName probe hit PAD.SetName —
+    pcbnew's legacy alias for SetNumber. Pads got renamed to wire numbers, and
+    on save KiCad silently DROPPED any pad whose new number collided
+    numerically with a sibling's (e.g. "002" vs pad "2") — net down to one
+    endpoint, wire gone from the next wirelist."""
+    import shutil
+    work = os.path.join(tmp_dir, "apply")
+    shutil.copytree(FIXTURE, work)
+    b = pcbnew.LoadBoard(os.path.join(work, "Untitled.kicad_pcb"))
+
+    def pad_state(bd):
+        return sorted((fp.GetReference(), str(p.GetNumber()))
+                      for fp in bd.GetFootprints() for p in fp.Pads())
+
+    def net_names(bd):
+        return sorted(str(p.GetNetname())
+                      for fp in bd.GetFootprints() for p in fp.Pads())
+
+    pads0 = pad_state(b)
+    apply_wire_names_to_board(b, pcbnew_module=pcbnew, out_dir=work, stem="it")
+    assert pad_state(b) == pads0, "first apply changed a pad number"
+    nets1 = net_names(b)
+    # cable-core nets are identified BY name; they must never be renamed
+    assert {n for n in nets1 if n.startswith("/W5.")} == {"/W5.L1", "/W5.L2", "/W5.L3"}
+
+    apply_wire_names_to_board(b, pcbnew_module=pcbnew, out_dir=work, stem="it")
+    assert pad_state(b) == pads0, "second apply changed a pad number"
+    assert net_names(b) == nets1, "second apply must keep the same numbers"
+
+    out = os.path.join(work, "roundtrip.kicad_pcb")
+    pcbnew.SaveBoard(out, b)
+    assert pad_state(pcbnew.LoadBoard(out)) == pads0, "save/reload lost a pad"
+
+
 def test_netlist_route_carries_classes(tmp_dir):
     """kicad-cli exports class="X,Default" per net; the CLI route must use it."""
     import shutil
@@ -162,6 +206,8 @@ if __name__ == "__main__":
     test_load_geometry()
     with tempfile.TemporaryDirectory() as td:
         test_full_pipeline_csv(td)
+    with tempfile.TemporaryDirectory() as td:
+        test_apply_wire_names_survives_reruns_and_saves(td)
     with tempfile.TemporaryDirectory() as td:
         test_netlist_route_carries_classes(td)
     print(f"OK pcbnew integration on {pcbnew.GetBuildVersion()}: "
