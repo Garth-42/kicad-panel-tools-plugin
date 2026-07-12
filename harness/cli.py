@@ -7,6 +7,7 @@ from .engine import build_harness
 from .emit import write_csv, write_wireviz
 from .numbering import SCHEMES
 from .persist import WireNumberStore, collect_numbers, WIRE_NUMBERS_NAME
+from .review import apply_review, load_review, review_numbers, write_review
 
 
 def main(argv=None):
@@ -22,11 +23,15 @@ def main(argv=None):
                    help=f"wire-number store (default: {WIRE_NUMBERS_NAME} next to the netlist)")
     p.add_argument("--no-persist", action="store_true",
                    help="do not load/save the wire-number store")
+    p.add_argument("--review", metavar="CSV",
+                   help="editable wire review CSV to load and rewrite")
     args = p.parse_args(argv)
 
     conn = KicadNetlistSource(args.netlist).load()
     specs = SpecStore.from_file(args.specs) if args.specs else SpecStore()
     numberer = SCHEMES[args.numbering]()
+
+    review_rows, review_warnings = load_review(args.review) if args.review else ({}, [])
 
     store = None
     known: dict = {}
@@ -34,11 +39,15 @@ def main(argv=None):
         store = WireNumberStore(args.numbers or os.path.join(
             os.path.dirname(os.path.abspath(args.netlist)), WIRE_NUMBERS_NAME))
         known = store.load()
+    known.update(review_numbers(review_rows))
 
     harness, warnings = build_harness(conn, specs,
                                       auto_number=not args.no_autonumber,
                                       numberer=numberer,
                                       known_numbers=known)
+    warnings.extend(review_warnings)
+    warnings.extend(apply_review(harness, review_rows))
+
     if store is not None:
         store.save(collect_numbers(harness))
         if store.warning:
@@ -48,6 +57,9 @@ def main(argv=None):
 
     write_csv(harness, args.csv)
     print(f"{len(harness.wires)} wires -> {args.csv}")
+    if args.review:
+        write_review(harness, args.review, review_rows)
+        print(f"wire review table -> {args.review}")
     if args.wireviz:
         write_wireviz(harness, args.wireviz, components=conn.components)
         print(f"WireViz YAML -> {args.wireviz}  (render: wireviz {args.wireviz})")

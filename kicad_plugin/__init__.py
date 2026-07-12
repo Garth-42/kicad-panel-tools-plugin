@@ -9,6 +9,7 @@ Install: copy or symlink this `kicad_plugin` folder into your KiCad plugin path
 Tools -> External Plugins -> Refresh. See README for per-OS paths.
 """
 import os
+import subprocess
 import sys
 
 # Make the sibling `harness` package importable regardless of where KiCad loaded
@@ -47,15 +48,49 @@ class HarnessDocsPlugin(_Base):
         _report(res)
 
 
+def _open_path(path):
+    if not path:
+        return
+    if sys.platform.startswith("win"):
+        os.startfile(path)  # type: ignore[attr-defined]
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", path])
+    else:
+        subprocess.Popen(["xdg-open", path])
+
+
 def _report(res):
     lines = [f"{res.wire_count} wires exported.", "", "Wrote:"]
     lines += [f"  {p}" for p in res.outputs]
+    if res.review_path:
+        lines += ["", "Edit the wire review CSV, save it, then run this command again to apply changes."]
     if res.warnings:
         lines += ["", "Warnings:"] + [f"  {w}" for w in res.warnings]
     msg = "\n".join(lines)
     try:
         import wx
-        wx.MessageBox(msg, "Harness docs")
+        dlg = wx.Dialog(None, title="Harness docs")
+        panel = wx.Panel(dlg)
+        text = wx.TextCtrl(panel, value=msg, style=wx.TE_MULTILINE | wx.TE_READONLY)
+        buttons = wx.BoxSizer(wx.HORIZONTAL)
+        if res.review_path:
+            open_review = wx.Button(panel, label="Open Review CSV")
+            open_folder = wx.Button(panel, label="Open Folder")
+            open_review.Bind(wx.EVT_BUTTON, lambda _evt: _open_path(res.review_path))
+            open_folder.Bind(wx.EVT_BUTTON, lambda _evt: _open_path(os.path.dirname(res.review_path)))
+            buttons.Add(open_review, 0, wx.RIGHT, 8)
+            buttons.Add(open_folder, 0, wx.RIGHT, 8)
+        close = wx.Button(panel, wx.ID_OK, "Close")
+        close.Bind(wx.EVT_BUTTON, lambda _evt: dlg.EndModal(wx.ID_OK))
+        buttons.AddStretchSpacer()
+        buttons.Add(close, 0)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(text, 1, wx.EXPAND | wx.ALL, 10)
+        sizer.Add(buttons, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        panel.SetSizer(sizer)
+        dlg.SetSize((700, 420))
+        dlg.ShowModal()
+        dlg.Destroy()
     except Exception:
         print(msg)
 
