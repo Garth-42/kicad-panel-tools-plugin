@@ -17,13 +17,17 @@ Dev alternative: keep the repo wherever you like and symlink just `kicad_plugin`
 into the plugin directory — the plugin resolves the repo root via realpath, so
 `harness` is still importable.
 
-## PyYAML note
+Prefer the packaged install: **Plugin and Content Manager → Install from
+File…** with `harness_docs_pcm.zip` (`python3 scripts/build_pcm.py`, or the
+CI artifact).
 
-The **CSV always works** — it needs no third-party packages. Reading a
-`harness_specs.yaml` and emitting **WireViz YAML** need PyYAML in *KiCad's* Python.
-Check in the scripting console with `import yaml`; if it's missing you can install
-it into KiCad's interpreter, or just use the CSV (net-class → wire-type mapping
-then lives in the CSV post-step instead).
+No third-party packages are needed: a pure-Python YAML reader is bundled
+(`harness/_vendor`), so the spec file and WireViz output work in KiCad's bare
+Python. An installed PyYAML is used automatically when present.
+
+This folder also ships the **Panel device** footprint wizard
+(`panel_device_wizard.py`) — Footprint Editor → New Footprint Using Wizard —
+for generating 2D panel-device footprints (body + named terminal rows).
 
 ## Workflow
 

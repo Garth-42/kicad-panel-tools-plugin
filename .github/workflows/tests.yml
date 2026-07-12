@@ -5,7 +5,8 @@ on:
   pull_request:
 
 jobs:
-  # Mock-based suite: no KiCad. The pcbnew integration test skips itself.
+  # Mock-based suite: no KiCad, and deliberately NO PyYAML — this job proves
+  # the vendored yaml fallback. The pcbnew/wireviz tests skip themselves.
   unit:
     runs-on: ubuntu-24.04
     steps:
@@ -13,10 +14,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install PyYAML
-      - name: Run tests
+      - name: Run tests (vendored-yaml path)
         run: |
           set -e
+          python3 -c "import harness.yamlio as y; m = y.import_yaml(); assert '_vendor' in m.__file__, m.__file__"
           for t in tests/test_*.py; do python3 "$t"; done
 
   # Render the emitted YAML through real WireViz (catches schema/coercion
@@ -31,6 +32,18 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends graphviz
       - run: pip install PyYAML wireviz
       - run: python3 tests/test_wireviz_render.py
+
+  # Build the Plugin-and-Content-Manager package and keep it as an artifact
+  # (KiCad -> Plugin and Content Manager -> Install from File...).
+  pcm-package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/build_pcm.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: harness-docs-pcm
+          path: dist/harness_docs_pcm.zip
 
   # Full suite against real pcbnew, installed from the official KiCad 10 PPA.
   # pcbnew binds to the system python3, so PyYAML comes from apt, not pip.

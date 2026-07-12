@@ -100,6 +100,15 @@ def test_full_pipeline_csv(tmp_dir):
     # WireViz YAML emitted too (PyYAML is present alongside real KiCad here)
     assert any(p.endswith("it_harness.yaml") for p in res.outputs), res.outputs
 
+    # panel wiring diagram emitted and well-formed, with wire colors + labels
+    svg_path = os.path.join(tmp_dir, "it_panel.svg")
+    assert any(p.endswith("it_panel.svg") for p in res.outputs), res.outputs
+    import xml.etree.ElementTree as ET
+    svg = open(svg_path).read()
+    ET.fromstring(svg)
+    assert ">W5-L1<" in svg          # wire-number flag from the routed cable
+    assert "#7B3F00" in svg          # BN core rendered in IEC brown
+
     # wire numbers persisted next to the outputs; a rerun is byte-identical
     assert any(p.endswith("wire_numbers.json") for p in res.outputs), res.outputs
     csv1 = open(os.path.join(tmp_dir, "it_wirelist.csv")).read()
@@ -107,6 +116,20 @@ def test_full_pipeline_csv(tmp_dir):
                           specs_path=os.path.join(FIXTURE, "harness_specs.yaml"),
                           out_dir=tmp_dir, stem="it")
     assert open(os.path.join(tmp_dir, "it_wirelist.csv")).read() == csv1
+
+
+def test_load_geometry():
+    geo = KicadBoardSource.from_board(board, pcbnew).load_geometry()
+    assert sorted(geo.footprints) == ["J1", "J2", "J3", "J4", "J5", "J6"]
+    j1 = geo.footprints["J1"]
+    assert j1.outlines, "expected fab/silk outline polylines"
+    assert "1" in j1.pads and len(j1.pads["1"]) == 3
+    # 7 routed segments: 3 W5 cores x 2 (L-shapes) + 1 straight motor run
+    assert len(geo.tracks) == 7, len(geo.tracks)
+    nets = {t[0] for t in geo.tracks}
+    assert nets == {"/W5.L1", "/W5.L2", "/W5.L3", "Net-(J1-Pin_3)"}
+    widths = {round(t[3], 2) for t in geo.tracks}
+    assert widths == {0.25}, widths
 
 
 def test_netlist_route_carries_classes(tmp_dir):
@@ -130,6 +153,7 @@ def test_netlist_route_carries_classes(tmp_dir):
 if __name__ == "__main__":
     import tempfile
     test_board_adapter_reads_netclass_color_width_length()
+    test_load_geometry()
     with tempfile.TemporaryDirectory() as td:
         test_full_pipeline_csv(td)
     with tempfile.TemporaryDirectory() as td:

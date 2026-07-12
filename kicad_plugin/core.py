@@ -41,7 +41,8 @@ def generate_harness_docs(board, *, pcbnew_module=None, specs_path=None,
     out_dir, stem = _board_stem_and_dir(board, out_dir, stem)
 
     # 1) connectivity + routed lengths from the board
-    conn = KicadBoardSource.from_board(board, pcbnew_module).load()
+    source = KicadBoardSource.from_board(board, pcbnew_module)
+    conn = source.load()
 
     # 2) specs: prefer an explicit path, else <board_dir>/harness_specs.yaml if present.
     #    Missing PyYAML or missing file just means "defaults" -- CSV still works.
@@ -84,5 +85,17 @@ def generate_harness_docs(board, *, pcbnew_module=None, specs_path=None,
             res.outputs.append(wv_path)
         except Exception as e:  # PyYAML absent -> skip, don't fail the CSV
             res.warnings.append(f"WireViz YAML skipped: {e}")
+
+    # 5) panel wiring diagram (SVG) from board geometry; skipped when the
+    #    board has nothing drawable (e.g. mocked boards without geometry)
+    try:
+        from harness.emit import write_panel_svg
+        geo = source.load_geometry()
+        if geo.footprints or geo.tracks:
+            svg_path = os.path.join(out_dir, f"{stem}_panel.svg")
+            write_panel_svg(harness, geo, svg_path)
+            res.outputs.append(svg_path)
+    except Exception as e:
+        res.warnings.append(f"panel diagram skipped: {e}")
 
     return res

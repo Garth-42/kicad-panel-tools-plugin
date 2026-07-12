@@ -24,8 +24,11 @@ coverage includes geometry you can reimplement `_length_mm`/iteration against it
 without touching anything above this file. Verify method names against your build.
 """
 from __future__ import annotations
+import math
+
 from .base import ConnectivitySource
-from ..model import Connectivity, Component, Net, Node
+from ..model import (Connectivity, Component, Net, Node,
+                     BoardGeometry, FootprintGeometry)
 
 
 def _first(obj, *method_names, default=None):
@@ -123,6 +126,114 @@ class KicadBoardSource(ConnectivitySource):
                 track_width_mm=width_by_net.get(netname),
             ))
         return conn
+
+    # ---- geometry (for the panel wiring-diagram emitter) ---------------------
+    def load_geometry(self) -> BoardGeometry:
+        """Extract drawable geometry: footprint outlines/pads, tracks, board
+        edge, title block. All coordinates absolute board mm (pcbnew already
+        reports footprint children in board coordinates). Written with the
+        same defensive `_first` style as load(); anything unreadable is simply
+        omitted, so an odd item never sinks the whole diagram."""
+        geo = BoardGeometry()
+
+        for fp in _first(self.board, "GetFootprints", "Footprints", default=[]) or []:
+            ref = _first(fp, "GetReference", default="") or ""
+            pos = _first(fp, "GetPosition", default=None)
+            fg = FootprintGeometry(
+                ref=ref,
+                x=self._to_mm(pos.x) if pos is not None else 0.0,
+                y=self._to_mm(pos.y) if pos is not None else 0.0,
+                rot_deg=float(_first(fp, "GetOrientationDegrees", default=0) or 0))
+            shapes = {"F.Fab": [], "F.SilkS": [], "F.Silkscreen": []}
+            for g in _first(fp, "GraphicalItems", default=[]) or []:
+                lname = str(_first(g, "GetLayerName", default="") or "")
+                if lname not in shapes:
+                    continue
+                pl = self._shape_polyline(g)
+                if pl:
+                    shapes[lname].append(pl)
+            # prefer the fab outline; fall back to silk if the footprint has none
+            fg.outlines = (shapes["F.Fab"]
+                           or shapes["F.SilkS"] + shapes["F.Silkscreen"])
+            for pad in _first(fp, "Pads", "GetPads", default=[]) or []:
+                pin = str(_first(pad, "GetNumber", "GetName", default="") or "")
+                ppos = _first(pad, "GetPosition", default=None)
+                size = _first(pad, "GetSize", default=None)
+                if pin and ppos is not None:
+                    dia = self._to_mm(min(size.x, size.y)) if size is not None else 1.0
+                    fg.pads[pin] = (self._to_mm(ppos.x), self._to_mm(ppos.y), dia)
+            geo.footprints[ref] = fg
+
+        for trk in _first(self.board, "GetTracks", "Tracks", default=[]) or []:
+            cls = _first(trk, "GetClass", default="")
+            if cls and "VIA" in str(cls).upper():
+                continue
+            net = _first(trk, "GetNetname", default="") or ""
+            a = _first(trk, "GetStart", default=None)
+            b = _first(trk, "GetEnd", default=None)
+            if a is None or b is None:
+                continue
+            w = self._to_mm(_first(trk, "GetWidth", default=0) or 0)
+            geo.tracks.append((net,
+                               (self._to_mm(a.x), self._to_mm(a.y)),
+                               (self._to_mm(b.x), self._to_mm(b.y)), w))
+
+        for d in _first(self.board, "GetDrawings", "Drawings", default=[]) or []:
+            if str(_first(d, "GetLayerName", default="") or "") != "Edge.Cuts":
+                continue
+            pl = self._shape_polyline(d)
+            if pl:
+                geo.edges.append(pl)
+
+        tb = _first(self.board, "GetTitleBlock", default=None)
+        if tb is not None:
+            geo.title = {
+                "title": str(_first(tb, "GetTitle", default="") or ""),
+                "rev": str(_first(tb, "GetRevision", default="") or ""),
+                "company": str(_first(tb, "GetCompany", default="") or ""),
+                "date": str(_first(tb, "GetDate", default="") or ""),
+            }
+        return geo
+
+    def _shape_polyline(self, g):
+        """PCB_SHAPE -> [(x,y), ...] mm, or None. Arcs become 3-point chords,
+        circles 24-gons; unknown shapes fall back to a start-end segment."""
+        shape = _first(g, "GetShape", default=None)
+        a = _first(g, "GetStart", default=None)
+        b = _first(g, "GetEnd", default=None)
+        if a is None:
+            return None
+        ax, ay = self._to_mm(a.x), self._to_mm(a.y)
+        if shape == getattr(self.pcb, "SHAPE_T_RECTANGLE", 1) and b is not None:
+            bx, by = self._to_mm(b.x), self._to_mm(b.y)
+            return [(ax, ay), (bx, ay), (bx, by), (ax, by), (ax, ay)]
+        if shape == getattr(self.pcb, "SHAPE_T_CIRCLE", 3) and b is not None:
+            bx, by = self._to_mm(b.x), self._to_mm(b.y)
+            r = math.hypot(bx - ax, by - ay)
+            pts = [(ax + r * math.cos(t), ay + r * math.sin(t))
+                   for t in (i * math.tau / 24 for i in range(25))]
+            return pts
+        if shape == getattr(self.pcb, "SHAPE_T_POLY", 4):
+            poly = _first(g, "GetPolyShape", default=None)
+            try:
+                outline = poly.Outline(0)
+                return [(self._to_mm(outline.CPoint(i).x),
+                         self._to_mm(outline.CPoint(i).y))
+                        for i in range(outline.PointCount())] + \
+                       [(self._to_mm(outline.CPoint(0).x),
+                         self._to_mm(outline.CPoint(0).y))]
+            except Exception:
+                return None
+        if shape == getattr(self.pcb, "SHAPE_T_ARC", 2) and b is not None:
+            mid = _first(g, "GetArcMid", default=None)
+            pts = [(ax, ay)]
+            if mid is not None:
+                pts.append((self._to_mm(mid.x), self._to_mm(mid.y)))
+            pts.append((self._to_mm(b.x), self._to_mm(b.y)))
+            return pts
+        if b is not None:                      # SEGMENT and anything unknown
+            return [(ax, ay), (self._to_mm(b.x), self._to_mm(b.y))]
+        return None
 
     # ---- version-tolerant field/netclass access ------------------------------
     def _footprint_fields(self, fp) -> dict:

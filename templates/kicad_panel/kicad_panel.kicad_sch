@@ -1,0 +1,12 @@
+(kicad_sch (version 20230121) (generator eeschema)
+  (uuid "629faf42-5afd-4bb5-a0d4-3f24431e4e1b")
+  (paper "A3")
+  (title_block
+    (title "Panel wiring")
+    (rev "A")
+    (comment 1 "Wire types = net classes (14AWG_BN, ...). Cables = named group buses (W5{L1 L2 L3}).")
+    (comment 2 "See harness_specs.yaml next to the board; docs: harness_engine user guide.")
+  )
+  (lib_symbols)
+  (symbol_instances)
+)

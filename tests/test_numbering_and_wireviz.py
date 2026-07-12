@@ -1,6 +1,7 @@
 import sys, os, tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import yaml
+from harness.yamlio import import_yaml
+yaml = import_yaml()
 import tests.mock_pcbnew as mock
 from harness.ingest import KicadBoardSource
 from harness.specs import SpecStore

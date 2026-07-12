@@ -13,6 +13,7 @@ A dialog reports the wire count, output paths, and any warnings. Next to your
 |---|---|
 | `<board>_wirelist.csv` | the point-to-point wire list (see columns below) |
 | `<board>_harness.yaml` | WireViz input — render it into a diagram + BOM |
+| `<board>_panel.svg`    | panel wiring diagram — see [Drawing the panel](panel-layout.md) |
 | `wire_numbers.json`    | the wire-number store — **commit it with your design** |
 
 The plugin auto-loads `harness_specs.yaml` if it sits next to the board.

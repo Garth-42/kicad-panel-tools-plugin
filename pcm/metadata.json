@@ -1,0 +1,25 @@
+{
+  "$schema": "https://go.kicad.org/pcm/schemas/v1",
+  "name": "Harness docs (harness_engine)",
+  "description": "Wire-harness manufacturing docs from the open board: wire list CSV, WireViz YAML, panel wiring diagram SVG.",
+  "description_full": "Treats the PCB as a 1:1 panel/harness wiring layout and generates manufacturing documentation from it: a point-to-point wire list (CSV) with gauges, colors and routed cut lengths; WireViz YAML for a harness diagram + BOM; and a panel wiring-diagram SVG with device outlines, wire-colored runs and wire-number flags. Wire types come from net class names, multi-conductor cables from named group buses, cut lengths from routed tracks. Includes the 'Panel device' footprint wizard for fast 2D device footprints. Wire numbers persist across re-exports via wire_numbers.json. No third-party Python packages required.",
+  "identifier": "com.github.garth-42.kicad-panel-tools-plugin",
+  "type": "plugin",
+  "author": {
+    "name": "Garth Benson",
+    "contact": {
+      "web": "https://github.com/Garth-42/kicad-panel-tools-plugin"
+    }
+  },
+  "license": "MIT",
+  "resources": {
+    "homepage": "https://github.com/Garth-42/kicad-panel-tools-plugin"
+  },
+  "versions": [
+    {
+      "version": "0.2.0",
+      "status": "stable",
+      "kicad_version": "9.0"
+    }
+  ]
+}
