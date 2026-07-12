@@ -1,8 +1,8 @@
-"""The action plugin must register even if wx.GetApp() is not visible yet.
+"""Action plugins register only when a wx application handle exists.
 
-KiCad/PCM can import plugin packages during refresh before a wx.App is exposed to
-Python.  The menu entry under Tools -> External Plugins is created by
-ActionPlugin.register(), so import-time registration must not be gated on wx.
+KiCad 10 asserts in C++ if ActionPlugin.register() runs before its GUI
+application handle exists. Headless imports must therefore be side-effect safe,
+while GUI imports should still register both toolbar/menu actions.
 """
 import importlib
 import os
@@ -21,33 +21,64 @@ class _ActionPlugin:
         self.__class__.registered.append(self)
 
 
-def main():
+class _FakeWxApp:
+    @staticmethod
+    def GetInstance():
+        return object()
+
+
+def _clear_plugin_modules():
     for name in [m for m in sys.modules if m == "kicad_plugin" or m.startswith("kicad_plugin.")]:
         del sys.modules[name]
 
-    fake_pcbnew = types.SimpleNamespace(ActionPlugin=_ActionPlugin)
-    sys.modules["pcbnew"] = fake_pcbnew
 
-    fake_wx = types.SimpleNamespace(GetApp=lambda: None)
-    sys.modules["wx"] = fake_wx
+def _import_with_fake_environment(wx_module):
+    _clear_plugin_modules()
+    _ActionPlugin.registered.clear()
+    sys.modules["pcbnew"] = types.SimpleNamespace(ActionPlugin=_ActionPlugin)
+    if wx_module is None:
+        sys.modules.pop("wx", None)
+    else:
+        sys.modules["wx"] = wx_module
+    return importlib.import_module("kicad_plugin")
 
+
+def main():
+    old_pcbnew = sys.modules.get("pcbnew")
+    old_wx = sys.modules.get("wx")
     try:
-        mod = importlib.import_module("kicad_plugin")
-        assert len(_ActionPlugin.registered) == 1
+        mod = _import_with_fake_environment(types.SimpleNamespace(GetApp=lambda: None))
+        assert len(_ActionPlugin.registered) == 0
+        assert hasattr(mod, "HarnessDocsPlugin")
+        assert hasattr(mod, "WireNamesPlugin")
+
+        mod = _import_with_fake_environment(types.SimpleNamespace(App=_FakeWxApp))
+        assert len(_ActionPlugin.registered) == 2
         plugin = _ActionPlugin.registered[0]
+        wire_plugin = _ActionPlugin.registered[1]
         assert plugin.name == "Generate harness docs"
         assert plugin.category == "Documentation"
         assert plugin.show_toolbar_button is True
         assert plugin.icon_file_name.endswith(os.path.join("kicad_plugin", "icon.xpm"))
         assert os.path.exists(plugin.icon_file_name)
+        assert wire_plugin.name == "Apply wire numbers to net names"
+        assert wire_plugin.show_toolbar_button is True
+        assert wire_plugin.icon_file_name.endswith(os.path.join("kicad_plugin", "icon.xpm"))
+        assert os.path.exists(wire_plugin.icon_file_name)
         assert hasattr(mod, "HarnessDocsPlugin")
+        assert hasattr(mod, "WireNamesPlugin")
     finally:
-        sys.modules.pop("pcbnew", None)
-        sys.modules.pop("wx", None)
-        for name in [m for m in sys.modules if m == "kicad_plugin" or m.startswith("kicad_plugin.")]:
-            del sys.modules[name]
+        if old_pcbnew is None:
+            sys.modules.pop("pcbnew", None)
+        else:
+            sys.modules["pcbnew"] = old_pcbnew
+        if old_wx is None:
+            sys.modules.pop("wx", None)
+        else:
+            sys.modules["wx"] = old_wx
+        _clear_plugin_modules()
 
-    print("OK action plugin registers without requiring wx.GetApp()")
+    print("OK action plugin registration is GUI-gated and registers with wx.App")
 
 
 if __name__ == "__main__":

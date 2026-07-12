@@ -29,6 +29,22 @@ except Exception:
     _Base = object
 
 
+def _have_wx_app():
+    try:
+        import wx
+    except Exception:
+        return False
+    app_cls = getattr(wx, "App", None)
+    get_instance = getattr(app_cls, "GetInstance", None) if app_cls is not None else None
+    try:
+        if callable(get_instance):
+            return get_instance() is not None
+        get_app = getattr(wx, "GetApp", None)
+        return callable(get_app) and get_app() is not None
+    except Exception:
+        return False
+
+
 def _split_labels(text, count, start=1):
     """'L1,L2,L3' -> labels; empty text -> ['<start>', ...] numeric run."""
     labels = [t.strip() for t in (text or "").split(",") if t.strip()]
@@ -144,5 +160,5 @@ def pcbnew_to_mm(value):
     return _pcbnew.ToMM(int(value)) if _pcbnew is not None else float(value)
 
 
-if _pcbnew is not None and FootprintWizardBase is not None:
+if _pcbnew is not None and FootprintWizardBase is not None and _have_wx_app():
     PanelDeviceWizard().register()
