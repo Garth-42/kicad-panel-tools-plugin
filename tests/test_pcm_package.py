@@ -26,6 +26,12 @@ class _ActionPlugin:
         self.__class__.registered.append(self)
 
 
+class _FakeWxApp:
+    @staticmethod
+    def GetInstance():
+        return object()
+
+
 def main():
     subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "build_pcm.py")],
                    check=True, stdout=subprocess.DEVNULL)
@@ -44,6 +50,7 @@ def main():
 
     tmp = tempfile.mkdtemp(prefix="pcm_pkg_")
     old_pcbnew = sys.modules.get("pcbnew")
+    old_wx = sys.modules.get("wx")
     try:
         # Install like PCM: plugins/* -> 3rdparty/plugins/<identifier>/*.
         # Keep the dashes: pcbnew's loader must cope with non-identifier chars.
@@ -63,6 +70,7 @@ def main():
             del sys.modules[m]
         _ActionPlugin.registered.clear()
         sys.modules["pcbnew"] = types.SimpleNamespace(ActionPlugin=_ActionPlugin)
+        sys.modules["wx"] = types.SimpleNamespace(App=_FakeWxApp)
         spec = importlib.util.spec_from_file_location(
             "com_github_pcm_test", os.path.join(pkg_dir, "__init__.py"),
             submodule_search_locations=[pkg_dir])
@@ -93,6 +101,10 @@ def main():
             sys.modules.pop("pcbnew", None)
         else:
             sys.modules["pcbnew"] = old_pcbnew
+        if old_wx is None:
+            sys.modules.pop("wx", None)
+        else:
+            sys.modules["wx"] = old_wx
         shutil.rmtree(tmp, ignore_errors=True)
 
     print("OK pcm package loads and registers from the top-level plugins directory")

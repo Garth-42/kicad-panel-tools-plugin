@@ -27,6 +27,22 @@ from . import panel_device_wizard  # noqa: F401  registers the footprint wizard
 _Base = pcbnew.ActionPlugin if pcbnew is not None else object
 
 
+def _have_wx_app():
+    try:
+        import wx
+    except Exception:
+        return False
+    app_cls = getattr(wx, "App", None)
+    get_instance = getattr(app_cls, "GetInstance", None) if app_cls is not None else None
+    try:
+        if callable(get_instance):
+            return get_instance() is not None
+        get_app = getattr(wx, "GetApp", None)
+        return callable(get_app) and get_app() is not None
+    except Exception:
+        return False
+
+
 def _toolbar_icon():
     return os.path.join(_HERE, "icon.xpm")
 
@@ -127,10 +143,11 @@ def _register_action_plugin():
     """Register with pcbnew when KiCad imports the package.
 
     KiCad's plugin loader is the authority on when ActionPlugins should be
-    registered. Do not require a wx.App here: some KiCad/PCM load paths import
-    Python plugins before wx.GetApp() is visible to Python.
+    registered. KiCad 10 asserts in C++ if ActionPlugin.register() runs before
+    a GUI application handle exists, so headless imports leave registration to
+    a later GUI import/refresh.
     """
-    if pcbnew is None:
+    if pcbnew is None or not _have_wx_app():
         return
     for plugin_cls in (HarnessDocsPlugin, WireNamesPlugin):
         try:
