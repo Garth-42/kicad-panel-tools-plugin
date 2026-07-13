@@ -70,8 +70,31 @@ def test_render_with_real_wireviz():
     return True
 
 
+def test_render_extends_path_with_tool_dirs():
+    # GUI-launched KiCad on macOS/Windows gets a minimal PATH; render_wireviz
+    # must splice in the known install prefixes (Homebrew etc.) so wireviz/dot
+    # are found both by us and by the subprocesses WireViz spawns itself.
+    import harness.wireviz as hw
+    old_dirs, old_path = hw._EXTRA_TOOL_DIRS, os.environ.get("PATH", "")
+    with tempfile.TemporaryDirectory() as td:
+        try:
+            hw._EXTRA_TOOL_DIRS = (td,)
+            hw._extend_path_for_tools()
+            assert td in os.environ["PATH"].split(os.pathsep)
+            hw._extend_path_for_tools()  # idempotent: no duplicate entry
+            assert os.environ["PATH"].split(os.pathsep).count(td) == 1
+            hw._EXTRA_TOOL_DIRS = (os.path.join(td, "missing"),)
+            hw._extend_path_for_tools()  # nonexistent dirs are not added
+            assert os.path.join(td, "missing") not in os.environ["PATH"]
+        finally:
+            hw._EXTRA_TOOL_DIRS = old_dirs
+            os.environ["PATH"] = old_path
+
+
 if __name__ == "__main__":
     test_pin_ids_match_wireviz_coercion()
+    test_render_extends_path_with_tool_dirs()
+    print("OK render PATH extension: tool dirs spliced in, idempotent")
     rendered = test_render_with_real_wireviz()
     if rendered:
         print("OK wireviz render: png/svg/html/BOM produced, MPN in BOM")

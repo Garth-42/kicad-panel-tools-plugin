@@ -6,11 +6,35 @@ import importlib.util
 import os
 import shutil
 import subprocess
+import sys
 
 from .yamlio import import_yaml
 from ._vendor import wireviz_renderer
 
 _OUTPUT_EXTS = (".png", ".svg", ".html", ".bom.tsv")
+
+# GUI-launched apps on macOS/Windows inherit a minimal PATH that misses the
+# usual install prefixes, so KiCad can't see a `wireviz`/`dot` that works fine
+# in a terminal (Homebrew, MacPorts, the Graphviz MSI).
+if sys.platform == "darwin":
+    _EXTRA_TOOL_DIRS = ("/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin")
+elif sys.platform.startswith("win"):
+    _EXTRA_TOOL_DIRS = (r"C:\Program Files\Graphviz\bin",)
+else:
+    _EXTRA_TOOL_DIRS = ()
+
+
+def _extend_path_for_tools():
+    """Add known tool prefixes to PATH so wireviz/dot are found.
+
+    Mutating os.environ (not just probing) is deliberate: the WireViz Python
+    API and CLI spawn `dot` themselves via PATH, so a lookup on our side alone
+    wouldn't help them.
+    """
+    parts = [p for p in (os.environ.get("PATH") or "").split(os.pathsep) if p]
+    extra = [d for d in _EXTRA_TOOL_DIRS if os.path.isdir(d) and d not in parts]
+    if extra:
+        os.environ["PATH"] = os.pathsep.join(parts + extra)
 
 
 def _expected_outputs(yaml_path: str) -> list[str]:
@@ -74,6 +98,7 @@ def render_wireviz(yaml_path: str) -> list[str]:
     this project. All paths require Graphviz ``dot`` for image generation.
     """
     yaml_path = os.path.abspath(yaml_path)
+    _extend_path_for_tools()
     for renderer in (_render_with_wireviz_api, _render_with_wireviz_cli):
         rendered = renderer(yaml_path)
         if rendered is not None:
