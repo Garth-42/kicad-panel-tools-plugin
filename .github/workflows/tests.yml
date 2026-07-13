@@ -67,7 +67,7 @@ jobs:
         run: |
           sudo add-apt-repository -y ppa:kicad/kicad-10.0-releases
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends kicad python3-yaml xvfb
+          sudo apt-get install -y --no-install-recommends kicad python3-yaml xvfb graphviz
       - name: Run tests (incl. pcbnew integration) in virtual X
         run: |
           set -e
