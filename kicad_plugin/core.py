@@ -247,9 +247,12 @@ def generate_harness_docs(board, *, pcbnew_module=None, specs_path=None,
                     if "Graphviz" in str(e) or "dot" in str(e):
                         res.warnings.append(
                             "WireViz diagram not rendered: Graphviz 'dot' not found. "
-                            "Install Graphviz (graphviz.org) to also get the "
-                            "PNG/SVG/HTML diagram and BOM; the WireViz YAML was "
-                            "written.")
+                            "Installing WireViz in KiCad's Python environment is necessary "
+                            "for the upstream WireViz renderer, but it does not install the "
+                            "separate Graphviz `dot` executable that WireViz uses to draw "
+                            "PNG/SVG/HTML diagrams. Install Graphviz (graphviz.org) and "
+                            "make sure `dot` is visible on KiCad's PATH; the WireViz YAML "
+                            f"was written. Renderer detail: {e}")
                     else:
                         res.warnings.append(f"WireViz render skipped: {e}")
         except Exception as e:  # PyYAML absent -> skip, don't fail the CSV
