@@ -1,15 +1,17 @@
 """Editable wire review table support.
 
 The review CSV is a user-facing companion to the generated wire list.  It is
-keyed by the same stable wire ids as wire_numbers.json, so users can edit wire
-numbers (and notes/metadata) without copying KiCad-generated net names into
-harness_specs.yaml.
+keyed by the same stable wire ids as wire_numbers.json (the endpoint pair
+`ref:pin<->ref:pin`), so users can edit wire numbers (and notes/metadata)
+without copying KiCad-generated net names into harness_specs.yaml — and the
+keys survive net renames and schematic re-syncs. Rows keyed by the v1 net-name
+ids are still matched, so old CSVs migrate on their next rewrite.
 """
 from __future__ import annotations
 import csv
 import os
 
-from .persist import wire_key
+from .persist import legacy_wire_key, wire_key
 
 REVIEW_SUFFIX = "_wire_review.csv"
 GENERATED_COLUMNS = [
@@ -25,14 +27,28 @@ def review_path(out_dir: str, stem: str) -> str:
 
 def wire_keys(harness) -> dict:
     """Return {id(wire): stable_key} for every wire in a harness."""
+    return {id(w): wire_key(w.a, w.b) for w in harness.wires}
+
+
+def legacy_wire_keys(harness) -> dict:
+    """{id(wire): v1_net_name_key}, for matching rows written before the
+    endpoint-key change."""
     per_net: dict = {}
     for w in harness.wires:
         per_net.setdefault(w.net, []).append(w)
     out: dict = {}
     for net_name, wires in per_net.items():
         for w in wires:
-            out[id(w)] = wire_key(net_name, w.b if len(wires) > 1 else None)
+            out[id(w)] = legacy_wire_key(net_name, w.b if len(wires) > 1 else None)
     return out
+
+
+def _row_for(wire, review_rows, keys, legacy):
+    """The review row matching a wire, and the key it matched under."""
+    for key in (keys[id(wire)], legacy[id(wire)]):
+        if key in review_rows:
+            return review_rows[key], key
+    return None, None
 
 
 def load_review(path: str) -> tuple[dict, list[str]]:
@@ -66,37 +82,42 @@ def apply_review(harness, review_rows: dict) -> list[str]:
     """Apply editable review-table fields to matching wires."""
     warnings: list[str] = []
     keys = wire_keys(harness)
+    legacy = legacy_wire_keys(harness)
     seen = set()
     used_numbers: dict = {}
     for w in harness.wires:
-        key = keys[id(w)]
-        row = review_rows.get(key)
-        if not row:
-            continue
-        seen.add(key)
-        for field in ("wire_no", "cable", "conductor", "gauge", "color"):
-            value = str(row.get(field, "")).strip()
-            if value:
-                setattr(w.spec, field, value)
-        note = str(row.get("notes", "")).strip()
-        if note:
-            w.spec.extra = dict(w.spec.extra or {})
-            w.spec.extra["notes"] = note
+        row, matched_key = _row_for(w, review_rows, keys, legacy)
+        if row is not None:
+            seen.add(matched_key)
+            for field in ("wire_no", "cable", "conductor", "gauge", "color"):
+                value = str(row.get(field, "")).strip()
+                if value:
+                    setattr(w.spec, field, value)
+            note = str(row.get("notes", "")).strip()
+            if note:
+                w.spec.extra = dict(w.spec.extra or {})
+                w.spec.extra["notes"] = note
         if w.spec.wire_no:
-            used_numbers.setdefault(w.spec.wire_no, []).append(key)
+            used_numbers.setdefault(w.spec.wire_no, []).append((w.net, keys[id(w)]))
     for number, owners in sorted(used_numbers.items()):
-        if len(owners) > 1:
-            warnings.append(f"duplicate wire number {number!r} in review/table result: {', '.join(owners)}")
+        # legs of one net may share a number (equipotential scheme); the same
+        # number on different nets is always a labelling error
+        if len({net for net, _ in owners}) > 1:
+            warnings.append(f"duplicate wire number {number!r} in review/table result: "
+                            f"{', '.join(k for _, k in owners)}")
     stale = sorted(set(review_rows) - seen)
     for key in stale:
         warnings.append(f"review key {key!r} no longer exists in this design")
     return warnings
 
 
-def write_review(harness, path: str, previous_rows: dict | None = None) -> None:
-    """Write a merged review table, preserving editable/custom columns by key."""
+def build_review_rows(harness, previous_rows: dict | None = None
+                      ) -> tuple[list[str], list[dict]]:
+    """The review table for a harness, merged with previous editable/custom
+    columns by key — pure, so callers can preview without writing a file."""
     previous_rows = previous_rows or {}
     keys = wire_keys(harness)
+    legacy = legacy_wire_keys(harness)
     custom_cols = []
     for row in previous_rows.values():
         for col in row:
@@ -105,10 +126,10 @@ def write_review(harness, path: str, previous_rows: dict | None = None) -> None:
     columns = GENERATED_COLUMNS + custom_cols
     rows = []
     for w in harness.wires:
-        key = keys[id(w)]
-        previous = previous_rows.get(key, {})
+        previous, _ = _row_for(w, previous_rows, keys, legacy)
+        previous = previous or {}
         row = {
-            "key": key,
+            "key": keys[id(w)],
             "wire_no": previous.get("wire_no") or w.spec.wire_no,
             "from_ref": w.a.ref, "from_pin": w.a.pin,
             "to_ref": w.b.ref, "to_pin": w.b.pin,
@@ -124,6 +145,12 @@ def write_review(harness, path: str, previous_rows: dict | None = None) -> None:
             row[col] = previous.get(col, "")
         rows.append(row)
     rows.sort(key=lambda r: (r["cable"], r["wire_no"], r["from_ref"], r["from_pin"]))
+    return columns, rows
+
+
+def write_review(harness, path: str, previous_rows: dict | None = None) -> None:
+    """Write a merged review table, preserving editable/custom columns by key."""
+    columns, rows = build_review_rows(harness, previous_rows)
     with open(path, "w", newline="", encoding="utf-8") as fh:
         wr = csv.DictWriter(fh, fieldnames=columns)
         wr.writeheader(); wr.writerows(rows)

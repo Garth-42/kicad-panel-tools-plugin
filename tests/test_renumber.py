@@ -70,9 +70,10 @@ def test_renumber_reassigns_and_keeps_other_review_edits():
 
         # user edits: a manual number and a note; plus a stale store entry for
         # a net that left the design (kept by normal runs, wiped by renumber)
+        W1_U = "-M1:U<->X1:1"          # endpoint key of the /W1_U wire
         rows = _review_rows(td)
-        rows["/W1_U"]["wire_no"] = "99"
-        rows["/W1_U"]["notes"] = "twisted pair"
+        rows[W1_U]["wire_no"] = "99"
+        rows[W1_U]["notes"] = "twisted pair"
         _write_review(td, rows)
         store_path = os.path.join(td, "wire_numbers.json")
         data = json.load(open(store_path, encoding="utf-8"))
@@ -83,7 +84,7 @@ def test_renumber_reassigns_and_keeps_other_review_edits():
         generate_harness_docs(mock.sample_board(), pcbnew_module=mock,
                               out_dir=td, stem="p", emit_wireviz=False)
         merged = _store_numbers(td)
-        assert merged["/W1_U"] == "99" and merged["/GHOST"] == "7"
+        assert merged[W1_U] == "99" and merged["/GHOST"] == "7"
 
         # renumber: fresh endpoint-derived numbers, manual number and ghost
         # entry gone, the note survives
@@ -92,13 +93,13 @@ def test_renumber_reassigns_and_keeps_other_review_edits():
                                     scheme="srcdst", renumber=True)
         assert res.scheme == "srcdst"
         fresh = _store_numbers(td)
-        assert fresh["/W1_U"] == "X1:1--M1:U"
-        assert fresh["/W1_V"] == "X1:2--M1:V"
-        assert fresh["/CTRL_A1"] == "X1:3--KM1:A1"
+        assert fresh[W1_U] == "X1:1--M1:U"
+        assert fresh["-M1:V<->X1:2"] == "X1:2--M1:V"
+        assert fresh["-KM1:A1<->X1:3"] == "X1:3--KM1:A1"
         assert "/GHOST" not in fresh
         rows = _review_rows(td)
-        assert rows["/W1_U"]["wire_no"] == "X1:1--M1:U"
-        assert rows["/W1_U"]["notes"] == "twisted pair"
+        assert rows[W1_U]["wire_no"] == "X1:1--M1:U"
+        assert rows[W1_U]["notes"] == "twisted pair"
 
         # the next normal run keeps the renumbered result stable
         generate_harness_docs(mock.sample_board(), pcbnew_module=mock,

@@ -61,7 +61,7 @@ def main():
         assert plugin.show_toolbar_button is True
         assert plugin.icon_file_name.endswith(os.path.join("kicad_plugin", "icon.xpm"))
         assert os.path.exists(plugin.icon_file_name)
-        assert wire_plugin.name == "Apply wire numbers to net names"
+        assert wire_plugin.name == "Generate wire numbers"
         assert wire_plugin.show_toolbar_button is True
         assert wire_plugin.icon_file_name.endswith(os.path.join("kicad_plugin", "icon.xpm"))
         assert os.path.exists(wire_plugin.icon_file_name)

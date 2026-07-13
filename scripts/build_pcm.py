@@ -10,6 +10,7 @@ Zip layout (what PCM expects):
     plugins/core.py              plugin implementation support
     plugins/panel_device_wizard.py
     plugins/review_dialog.py
+    plugins/wire_numbers_dialog.py
     plugins/icon.xpm              action toolbar icon
     plugins/harness/...          engine (incl. vendored yaml fallback)
 
@@ -108,7 +109,8 @@ def _report(res):
     lines = [f"{res.wire_count} wires exported.", "", "Wrote:"]
     lines += [f"  {p}" for p in res.outputs]
     if res.review_path:
-        lines += ["", "Use Edit Review Table to change wire_no/notes in KiCad, or Open Review CSV for a spreadsheet."]
+        lines += ["", "Use Edit Review Table to change wire_no/notes in KiCad, or Open Review CSV for a spreadsheet.",
+                  "To tune the numbering rule interactively, run 'Generate wire numbers' instead."]
     if res.warnings:
         lines += ["", "Warnings:"] + [f"  {w}" for w in res.warnings]
     msg = "\\n".join(lines)
@@ -167,22 +169,23 @@ _register_action_plugin()
 
 PCM_WIRE_NAMES = '''\
 
-from .core import apply_wire_names_to_board  # noqa: E402
-
-
 class WireNamesPlugin(_Base):
     def defaults(self):
-        self.name = "Apply wire numbers to net names"
+        self.name = "Generate wire numbers"
         self.category = "Documentation"
-        self.description = "Generate wire numbers and rename board nets to match"
+        self.description = ("Preview and tune wire numbers, then apply them "
+                            "to board net names")
         icon = os.path.join(_HERE, "icon.xpm")
         self.show_toolbar_button = os.path.exists(icon)
         self.icon_file_name = icon
 
     def Run(self):
         board = pcbnew.GetBoard()
-        res = apply_wire_names_to_board(board, pcbnew_module=pcbnew)
-        _report(res)
+        from .wire_numbers_dialog import run_wire_numbers_dialog
+        try:
+            run_wire_numbers_dialog(board, pcbnew)
+        except Exception as e:
+            print(f"wire numbers dialog failed: {e}", file=sys.stderr)
 
 
 def _register_wire_names_plugin():
@@ -219,7 +222,8 @@ def main():
         z.write(meta_path, "metadata.json")
         z.write(os.path.join(ROOT, "pcm", "icon.png"), "resources/icon.png")
         z.writestr("plugins/__init__.py", PCM_INIT + PCM_WIRE_NAMES)
-        for name in ("core.py", "panel_device_wizard.py", "review_dialog.py", "__main__.py", "icon.xpm"):
+        for name in ("core.py", "panel_device_wizard.py", "review_dialog.py",
+                     "wire_numbers_dialog.py", "__main__.py", "icon.xpm"):
             z.write(os.path.join(ROOT, "kicad_plugin", name), os.path.join("plugins", name))
         _add_tree(z, os.path.join(ROOT, "harness"), "plugins/harness")
 
@@ -229,6 +233,7 @@ def main():
     assert "plugins/core.py" in names
     assert "plugins/panel_device_wizard.py" in names
     assert "plugins/review_dialog.py" in names
+    assert "plugins/wire_numbers_dialog.py" in names
     assert "plugins/icon.xpm" in names
     assert "plugins/kicad_plugin/__init__.py" not in names
     assert "plugins/harness/engine.py" in names
