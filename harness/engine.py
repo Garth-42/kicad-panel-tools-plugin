@@ -20,7 +20,7 @@ from .model import Connectivity, Harness, Wire, WireSpec
 from .specs import SpecStore
 from .numbering import WireNumberer, GlobalSequence
 from .cables import parse_cable_ref
-from .persist import wire_key
+from .persist import legacy_wire_key, wire_key
 
 
 def _set_fields(spec: WireSpec, fields: dict, override: bool) -> None:
@@ -129,9 +129,14 @@ def build_harness(conn: Connectivity, specs: SpecStore,
             w = Wire(net=net.name, a=a, b=b, spec=replace(spec),
                      netclass=getattr(net, "netclass", ""))
             if known_numbers and not w.spec.wire_no:
-                key = wire_key(net.name, b if len(pairs) > 1 else None)
-                if key in known_numbers:
-                    w.spec.wire_no = known_numbers[key]
+                # endpoint key first; the v1 net-name key second, so stores and
+                # review tables written before the key change keep working
+                for key in (wire_key(a, b),
+                            legacy_wire_key(net.name,
+                                            b if len(pairs) > 1 else None)):
+                    if known_numbers.get(key):
+                        w.spec.wire_no = known_numbers[key]
+                        break
             wires.append(w)
 
     if auto_number:

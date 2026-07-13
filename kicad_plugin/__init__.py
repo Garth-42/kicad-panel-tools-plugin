@@ -20,8 +20,6 @@ try:
 except ImportError:            # allows importing this module outside KiCad (tests)
     pcbnew = None
 
-from harness.numbering import SCHEMES
-
 from .core import apply_wire_names_to_board, generate_harness_docs
 from . import panel_device_wizard  # noqa: F401  registers the footprint wizard
                                    # (it self-gates on pcbnew + FootprintWizardBase)
@@ -49,26 +47,6 @@ def _toolbar_icon():
     return os.path.join(_HERE, "icon.xpm")
 
 
-def _run_action(run, title):
-    """Run/re-run one toolbar action, driven by the report dialog's buttons.
-
-    A picked numbering scheme stays sticky for the rest of the loop (so a
-    regenerate after a review-table edit doesn't fall back to the spec file's
-    scheme), while `renumber` applies to a single run only.
-    """
-    scheme, renumber = None, False
-    while True:
-        res = run(scheme=scheme, renumber=renumber)
-        renumber = False
-        action = _report(res, title=title)
-        if action == "regenerate":
-            continue
-        if isinstance(action, tuple) and action[0] == "renumber":
-            scheme, renumber = action[1], True
-            continue
-        break
-
-
 class HarnessDocsPlugin(_Base):
     def defaults(self):
         self.name = "Generate harness docs"
@@ -80,25 +58,30 @@ class HarnessDocsPlugin(_Base):
 
     def Run(self):
         board = pcbnew.GetBoard()
-        _run_action(
-            lambda **kw: generate_harness_docs(board, pcbnew_module=pcbnew, **kw),
-            title="Harness docs")
+        while True:
+            res = generate_harness_docs(board, pcbnew_module=pcbnew)
+            if _report(res) != "regenerate":
+                break
 
 
 class WireNamesPlugin(_Base):
     def defaults(self):
-        self.name = "Apply wire numbers to net names"
+        self.name = "Generate wire numbers"
         self.category = "Documentation"
-        self.description = "Generate wire numbers and rename board nets to match"
+        self.description = ("Preview and tune wire numbers, then apply them "
+                            "to board net names")
         icon = _toolbar_icon()
         self.show_toolbar_button = os.path.exists(icon)
         self.icon_file_name = icon
 
     def Run(self):
         board = pcbnew.GetBoard()
-        _run_action(
-            lambda **kw: apply_wire_names_to_board(board, pcbnew_module=pcbnew, **kw),
-            title="Wire names")
+        from .wire_numbers_dialog import run_wire_numbers_dialog
+        try:
+            run_wire_numbers_dialog(board, pcbnew)
+        except Exception as e:
+            # no wx (headless import) or a GUI failure: at least say why
+            print(f"wire numbers dialog failed: {e}", file=sys.stderr)
 
 
 def _open_path(path):
@@ -117,7 +100,7 @@ def _report(res, title="Harness docs"):
     lines += [f"  {p}" for p in res.outputs]
     if res.review_path:
         lines += ["", "Use Edit Review Table to change wire_no/notes in KiCad, or Open Review CSV for a spreadsheet.",
-                  "To try a different numbering rule, pick a scheme below and Renumber."]
+                  "To tune the numbering rule interactively, run 'Generate wire numbers' instead."]
     if res.warnings:
         lines += ["", "Warnings:"] + [f"  {w}" for w in res.warnings]
     msg = "\n".join(lines)
@@ -128,35 +111,8 @@ def _report(res, title="Harness docs"):
         panel = wx.Panel(dlg)
         text = wx.TextCtrl(panel, value=msg, style=wx.TE_MULTILINE | wx.TE_READONLY)
         buttons = wx.BoxSizer(wx.HORIZONTAL)
-        numbering = wx.BoxSizer(wx.HORIZONTAL)
         action = {"value": "close"}
         if res.review_path:
-            scheme_choice = wx.Choice(panel, choices=list(SCHEMES))
-            current = res.scheme if res.scheme in SCHEMES else "global"
-            scheme_choice.SetStringSelection(current)
-            renumber_btn = wx.Button(panel, label="Renumber from Scratch")
-            renumber_btn.SetToolTip(
-                "Discard persisted wire numbers (wire_numbers.json and the review "
-                "table's wire_no column) and reassign every wire with the selected "
-                "scheme")
-
-            def renumber(_evt):
-                chosen = scheme_choice.GetStringSelection() or current
-                if wx.MessageBox(
-                        "Discard ALL persisted wire numbers and reassign with "
-                        f"scheme '{chosen}'?\n\nAlready-printed labels will no "
-                        "longer match unless the design is re-exported everywhere.",
-                        "Renumber from scratch",
-                        wx.YES_NO | wx.ICON_WARNING, dlg) != wx.YES:
-                    return
-                action["value"] = ("renumber", chosen)
-                dlg.EndModal(wx.ID_OK)
-
-            renumber_btn.Bind(wx.EVT_BUTTON, renumber)
-            numbering.Add(wx.StaticText(panel, label="Numbering scheme:"), 0,
-                          wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
-            numbering.Add(scheme_choice, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-            numbering.Add(renumber_btn, 0, wx.ALIGN_CENTER_VERTICAL)
             edit_review = wx.Button(panel, label="Edit Review Table")
             open_review = wx.Button(panel, label="Open Review CSV")
             open_folder = wx.Button(panel, label="Open Folder")
@@ -178,8 +134,6 @@ def _report(res, title="Harness docs"):
         buttons.Add(close, 0)
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(text, 1, wx.EXPAND | wx.ALL, 10)
-        if res.review_path:
-            sizer.Add(numbering, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
         sizer.Add(buttons, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
         panel.SetSizer(sizer)
         dlg.SetSize((700, 420))

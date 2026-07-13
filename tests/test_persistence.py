@@ -13,12 +13,15 @@ from harness.specs import SpecStore  # noqa: E402
 from harness.engine import build_harness  # noqa: E402
 from harness.numbering import GroupPrefix, GlobalSequence  # noqa: E402
 from harness.persist import (WireNumberStore, collect_numbers,  # noqa: E402
-                             wire_key, WIRE_NUMBERS_NAME)
+                             legacy_keys, wire_key, WIRE_NUMBERS_NAME)
 
 
 def _net(name, netclass="", nodes=None):
+    # distinct pins per net: in a real design a pad belongs to exactly one
+    # net, and endpoint-pair wire keys rely on that
+    pin = name.lstrip("/")
     return Net(code="1", name=name,
-               nodes=nodes or [Node("J1", "1"), Node("J2", "1")],
+               nodes=nodes or [Node("J1", pin), Node("J2", pin)],
                netclass=netclass)
 
 
@@ -51,11 +54,11 @@ def test_fresh_run_is_deterministic_without_store():
 
 def test_new_net_gets_unused_number():
     # A net added later must not steal a persisted number.
-    _, h = _numbers([_net("/A", "CLS"), _net("/B", "CLS")])
+    first, h = _numbers([_net("/A", "CLS"), _net("/B", "CLS")])
     known = collect_numbers(h)                       # M-001, M-002
     nums, _ = _numbers([_net("/ZZ_NEW", "CLS"), _net("/A", "CLS"),
                         _net("/B", "CLS")], known)
-    assert nums["/A"] == known["/A"] and nums["/B"] == known["/B"]
+    assert nums["/A"] == first["/A"] and nums["/B"] == first["/B"]
     assert nums["/ZZ_NEW"] == "M-003", nums
 
 
@@ -78,9 +81,36 @@ def test_star_legs_have_stable_keys():
     h2, _ = build_harness(Connectivity(nets=[_net("/GND", nodes=nodes[::-1])]),
                           SpecStore(), numberer=GlobalSequence())
     assert collect_numbers(h1) == collect_numbers(h2)
-    assert set(collect_numbers(h1)) == {"/GND@J2:1", "/GND@J3:1"}
-    # single-wire nets keep the bare net name as key
-    assert wire_key("/A") == "/A"
+    assert set(collect_numbers(h1)) == {"J1:1<->J2:1", "J1:1<->J3:1"}
+    # a key is the sorted endpoint pair — never a net name, so renaming a net
+    # ("Apply wire numbers to net names") or a schematic re-sync can't orphan it
+    assert wire_key(Node("X1", "1"), Node("-M1", "U")) == \
+        wire_key(Node("-M1", "U"), Node("X1", "1")) == "-M1:U<->X1:1"
+
+
+def test_legacy_net_name_keys_still_apply_and_migrate():
+    # A store written before the endpoint-key change (net-name keys) must keep
+    # numbering the same wires; once saved, entries move to endpoint keys and
+    # the superseded legacy entries are dropped — but legacy entries for wires
+    # absent from this run survive (a returning wire gets its number back).
+    legacy_store = {"/A": "M-007",                       # 2-endpoint net key
+                    "/GND@J2:1": "M-008",                # star-leg key
+                    "/GONE": "M-009"}                    # wire not in this run
+    gnd = _net("/GND", "CLS", nodes=[Node("J1", "1"), Node("J2", "1"),
+                                     Node("J3", "1")])
+    h, _ = build_harness(Connectivity(nets=[_net("/A", "CLS"), gnd]), SPECS,
+                         numberer=GroupPrefix(), known_numbers=legacy_store)
+    got = {w.net: w.spec.wire_no for w in h.wires if w.b.ref != "J3"}
+    assert got == {"/A": "M-007", "/GND": "M-008"}, got
+
+    with tempfile.TemporaryDirectory() as td:
+        store = WireNumberStore(os.path.join(td, WIRE_NUMBERS_NAME))
+        store.save(legacy_store)
+        store.save(collect_numbers(h), drop=legacy_keys(h))
+        migrated = store.load()
+        assert migrated["J1:1<->J2:1"] == "M-008"
+        assert "/A" not in migrated and "/GND@J2:1" not in migrated
+        assert migrated["/GONE"] == "M-009"
 
 
 def test_store_roundtrip_merge_and_corrupt():
@@ -127,6 +157,7 @@ if __name__ == "__main__":
     test_new_net_gets_unused_number()
     test_explicit_and_intrinsic_numbers_beat_store()
     test_star_legs_have_stable_keys()
+    test_legacy_net_name_keys_still_apply_and_migrate()
     test_store_roundtrip_merge_and_corrupt()
     test_plugin_writes_and_reuses_store()
     print("OK persistence: numbers stable across runs/reorderings; store "

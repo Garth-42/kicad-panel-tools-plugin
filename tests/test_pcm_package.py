@@ -44,6 +44,8 @@ def main():
     assert "plugins/core.py" in names, "action support must be directly in plugins/"
     assert "plugins/panel_device_wizard.py" in names, "wizard must be directly in plugins/"
     assert "plugins/review_dialog.py" in names, "native review editor must be bundled"
+    assert "plugins/wire_numbers_dialog.py" in names, \
+        "interactive wire-numbers dialog must be bundled"
     assert "plugins/icon.xpm" in names, "toolbar icon must be bundled next to the action plugin"
     assert not any(n.startswith("plugins/kicad_plugin/") for n in names), \
         "PCM action plugin must not be hidden inside a second-level plugin directory"
@@ -87,7 +89,7 @@ def main():
         assert plugin.show_toolbar_button is True
         assert plugin.icon_file_name.endswith("icon.xpm")
         assert os.path.exists(plugin.icon_file_name)
-        assert wire_plugin.name == "Apply wire numbers to net names"
+        assert wire_plugin.name == "Generate wire numbers"
         assert wire_plugin.show_toolbar_button is True
         assert wire_plugin.icon_file_name.endswith("icon.xpm")
         assert os.path.exists(wire_plugin.icon_file_name)

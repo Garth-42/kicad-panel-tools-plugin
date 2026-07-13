@@ -6,7 +6,7 @@ from .specs import SpecStore
 from .engine import build_harness
 from .emit import write_csv, write_wireviz
 from .numbering import SCHEMES
-from .persist import WireNumberStore, collect_numbers, WIRE_NUMBERS_NAME
+from .persist import WireNumberStore, collect_numbers, legacy_keys, WIRE_NUMBERS_NAME
 from .review import apply_review, load_review, review_numbers, write_review
 
 
@@ -63,7 +63,10 @@ def main(argv=None):
     if store is not None:
         # A renumber rewrites the store instead of merging, dropping entries
         # for absent nets (a kept one could collide with a fresh number later).
-        store.save(collect_numbers(harness), keep_existing=not args.renumber)
+        # Legacy net-name entries for wires being saved are dropped — those
+        # wires now live under their endpoint keys.
+        store.save(collect_numbers(harness), keep_existing=not args.renumber,
+                   drop=legacy_keys(harness))
         if store.warning:
             warnings.append(store.warning)
         else:

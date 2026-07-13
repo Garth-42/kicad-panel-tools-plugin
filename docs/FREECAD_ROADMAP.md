@@ -166,8 +166,10 @@ length from branch geometry. These become additional DRC-style reports off the g
 Even before FreeCAD work starts, these are cheap to add and de-risk the integration:
 - `FreecadLengthSource` + engine enrich hook (Phase 1) — small, do this first.
 - `harness_graph.json` / `placement.json` schemas frozen as above (versioned).
-- A stable-id contract: net name for wires; `ref` for connectors; assigned+persisted ids for
-  branches/splices. Everything that crosses a tool boundary is keyed by these.
+- A stable-id contract: the sorted endpoint pair `ref:pin<->ref:pin` for wires (net names
+  proved unstable — the plugin itself renames nets, orphaning anything keyed by them);
+  `ref` for connectors; assigned+persisted ids for branches/splices. Everything that
+  crosses a tool boundary is keyed by these.
 
 ## 8. Open questions / hard parts (be honest with the user)
 

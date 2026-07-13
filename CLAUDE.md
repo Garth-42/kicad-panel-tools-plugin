@@ -137,14 +137,16 @@ Verified against **real KiCad 10.0.4 headless** (integration test, every CI run)
   inherits Default's track width, so the per-name + Has-gate route is the only correct one)
 - **routed length**: `GetLength()` summed over tracks per net
 - kicad-cli netlist export carries `class="X,Default"` -> CLI route applies `classes:`
-- "Apply wire numbers to net names" survives reruns and saves
+- applying wire numbers to net names survives reruns and saves
   (`test_apply_wire_names_survives_reruns_and_saves`). Two real-pcbnew traps
   live here: `PAD.SetName` is a legacy alias for `SetNumber` — the PAD NUMBER —
   and KiCad silently *drops* a pad on save when its number collides numerically
   with a sibling's ("002" vs "2"); and `board.GetNetsByName()` stays keyed by
   the original names after a `NETINFO_ITEM.SetNetname`. So only ever rename the
-  NETINFO objects, never pads/tracks, and nets already named a previously
-  assigned number keep it (else every rerun churns P-001 -> 001 -> ...).
+  NETINFO objects, never pads/tracks. Rerun stability comes from endpoint-pair
+  store keys (rename-proof); the reclaim path in `_build_numbered_harness`
+  (nets already named a previously assigned number keep it) remains only for
+  legacy net-name-keyed stores.
 
 Also verified: the WireViz YAML renders through **real WireViz 0.4** (CI job
 `wireviz-render`; `tests/test_wireviz_render.py`). Gotcha encoded there: WireViz
@@ -160,32 +162,55 @@ Still only mock-verified:
 - `>2`-endpoint nets (e.g. shared GND) expand as a **star** from node[0] (warned). Board
   length is left blank on star legs (the summed track length spans the whole net). Revisit
   if daisy-chain/explicit routing is needed.
-- Renumbering after "Apply wire numbers to net names" + a later schematic
-  re-sync reassigns once more (the reset store is keyed by the renamed names).
-  Fix would be net-name-independent stable ids (FREECAD_ROADMAP §7 territory).
+- Endpoint-pair wire keys assume a wire's endpoints identify it. If a pad is
+  added to/removed from a `>2`-endpoint net, the sorted hub can shift and every
+  leg of THAT net re-keys (numbers reassigned); 2-endpoint nets are immune.
 
 ## Wire-number persistence (`persist.py`)
 
 Numbers stay attached to the same wire across re-exports via `wire_numbers.json`
-(next to the board / netlist; **commit it with the design**). Keys: net name for a
-plain 2-endpoint net; `"<net>@<ref>:<pin>"` (far endpoint) for star legs — the
-stable-id contract from `docs/FREECAD_ROADMAP.md` §7. Explicit `nets:` numbers and
-intrinsic cable-core labels always win over the store; schemes never reuse a taken
-number, so persisted + fresh can't collide; entries for absent nets are kept so a
-returning net gets its old number back. Fresh assignment iterates wires sorted by
-(net, endpoints), so even a first run is machine-independent (this bit — numbering
-following ingest iteration order — produced different number↔net pairings on two
-machines before). The plugin does this automatically; the CLI has `--numbers PATH`
-and `--no-persist`. A corrupt/unwritable store warns and never blocks the CSV.
+(next to the board / netlist; **commit it with the design**). Keys: the wire's
+sorted endpoint pair `"ref:pin<->ref:pin"` — the stable-id contract from
+`docs/FREECAD_ROADMAP.md` §7. A wire IS its two endpoints, so keys survive net
+renames and schematic re-syncs; the v1 net-name keys (net name; `"<net>@<ref>:<pin>"`
+for star legs) broke exactly there — renaming nets orphaned every review-table
+edit — and are now read-only fallbacks (`legacy_wire_key`; engine and review
+try endpoint key first, then legacy) that saves migrate away (`store.save(...,
+drop=legacy_keys(harness))`). Explicit `nets:` numbers and intrinsic cable-core
+labels always win over the store; schemes never reuse a taken number, so
+persisted + fresh can't collide; entries for absent wires are kept so a
+returning wire gets its old number back. Fresh assignment iterates wires sorted
+by (net, endpoints), so even a first run is machine-independent (this bit —
+numbering following ingest iteration order — produced different number↔net
+pairings on two machines before). The plugin does this automatically; the CLI
+has `--numbers PATH` and `--no-persist`. A corrupt/unwritable store warns and
+never blocks the CSV.
 
-**Renumber from scratch** (dialog scheme picker + button; CLI `--renumber`;
-`renumber=True` in `kicad_plugin/core.py`) is the deliberate escape hatch from
-stickiness: it skips loading the store, blanks the review table's `wire_no`
-column (other edits survive), and REWRITES the store (`keep_existing=False`,
-dropping absent-net entries that could later collide with fresh numbers). A
-scheme picked in the dialog (`scheme=` param) beats the spec's `numbering:` for
-that run only and warns to make it permanent; without `renumber` it changes
-nothing, since persisted numbers win. Locked in by `tests/test_renumber.py`.
+**Renumber from scratch** (Generate in the wire-numbers dialog; CLI
+`--renumber`; `renumber=True` in `kicad_plugin/core.py`) is the deliberate
+escape hatch from stickiness: it skips loading the store, blanks the review
+table's `wire_no` column (other edits survive), and REWRITES the store
+(`keep_existing=False`, dropping absent-wire entries that could later collide
+with fresh numbers). A `scheme=` param beats the spec's `numbering:` for that
+run only and warns to make it permanent; without `renumber` it changes nothing,
+since persisted numbers win. Locked in by `tests/test_renumber.py`.
+
+## Interactive wire-numbers dialog (`kicad_plugin/wire_numbers_dialog.py`)
+
+The "Generate wire numbers" action opens a modal editor BEFORE anything is
+generated: scheme dropdown + wire table + Generate (preview a renumber) +
+Apply & Finish (commit). Every Generate round calls
+`core.preview_wire_numbers` — a pure dry run (`dry_run=True`, no store write,
+no rename). User cell edits become `overrides` ({wire_key: {col: value}});
+pinned `wire_no` values survive renumbers, a cleared cell unpins. Commit calls
+`apply_wire_names_to_board(overrides=commit_overrides(...))`, which pins every
+displayed number (committed board == approved table) but deliberately does NOT
+pin generated gauge/color/cable values — freezing those into the review CSV
+would outlive later spec-file changes. When overrides are passed, the disk
+review CSV's `wire_no` column is ignored (the store + the table in front of
+the user are the truth). Session logic is wx-free
+(`collect_overrides`/`merge_overrides`/`commit_overrides`), locked in by
+`tests/test_wire_numbers_dialog.py`.
 
 ## Roadmap
 

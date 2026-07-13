@@ -10,9 +10,10 @@ from harness.specs import SpecStore
 from harness.engine import build_harness
 from harness.numbering import SCHEMES
 from harness.emit import write_csv
-from harness.persist import WireNumberStore, collect_numbers, WIRE_NUMBERS_NAME
-from harness.review import (apply_review, load_review, review_numbers,
-                            review_path, write_review)
+from harness.persist import (WireNumberStore, collect_numbers, legacy_keys,
+                             WIRE_NUMBERS_NAME)
+from harness.review import (apply_review, build_review_rows, load_review,
+                            review_numbers, review_path, write_review)
 
 DEFAULT_SPECS_NAME = "harness_specs.yaml"  # looked for next to the board
 
@@ -41,11 +42,18 @@ def _board_stem_and_dir(board, out_dir, stem):
 
 def _build_numbered_harness(board, pcbnew_module, specs_path, out_dir, stem, res,
                             reclaim_net_name_numbers=False, scheme=None,
-                            renumber=False):
+                            renumber=False, overrides=None, dry_run=False):
     """`scheme` overrides the spec file's `numbering:` for this run only;
     `renumber` discards persisted numbers (store + review `wire_no`) so the
     scheme reassigns everything from scratch. Explicit `nets:` numbers and
-    intrinsic cable-core labels still win — they aren't persistence."""
+    intrinsic cable-core labels still win — they aren't persistence.
+
+    `overrides` ({wire_key: {column: value}}, review-row shaped) are the
+    interactive dialog's edits: they beat the store and the on-disk review
+    table, and pinned `wire_no` values survive a renumber. When overrides are
+    given, the disk review table's wire_no column is ignored entirely (the
+    store carries those numbers; the table in front of the user is the truth).
+    `dry_run` computes without writing the store."""
     source = KicadBoardSource.from_board(board, pcbnew_module)
     conn = source.load()
 
@@ -75,10 +83,16 @@ def _build_numbered_harness(board, pcbnew_module, specs_path, out_dir, stem, res
     res.review_path = review_csv
     review_rows, review_warns = load_review(review_csv)
     res.warnings.extend(review_warns)
-    if renumber:
-        # A renumber must not resurrect old numbers via the review table; every
-        # other edited column (notes, gauge, custom ones, ...) is kept.
+    if renumber or overrides is not None:
+        # A renumber (or a dialog session, which is authoritative) must not
+        # resurrect old numbers via the review table; every other edited
+        # column (notes, gauge, custom ones, ...) is kept.
         review_rows = {k: dict(row, wire_no="") for k, row in review_rows.items()}
+    if overrides:
+        for key, row in overrides.items():
+            merged = dict(review_rows.get(key, {}))
+            merged.update({k: str(v) for k, v in row.items()})
+            review_rows[key] = merged
 
     store = WireNumberStore(os.path.join(out_dir, WIRE_NUMBERS_NAME))
     known = {} if renumber else store.load()
@@ -99,10 +113,14 @@ def _build_numbered_harness(board, pcbnew_module, specs_path, out_dir, stem, res
     res.warnings.extend(warns)
     res.warnings.extend(apply_review(harness, review_rows))
     res.wire_count = len(harness.wires)
+    if dry_run:
+        return source, conn, harness, review_rows
     # On a renumber the store is rewritten, not merged: keeping entries for
     # absent nets would let a retired number collide with a freshly issued one
-    # the day that net returns.
-    store.save(collect_numbers(harness), keep_existing=not renumber)
+    # the day that net returns. Legacy net-name entries for the wires being
+    # saved are dropped — those wires now live under their endpoint keys.
+    store.save(collect_numbers(harness), keep_existing=not renumber,
+               drop=legacy_keys(harness))
     if store.warning:
         res.warnings.append(store.warning)
     else:
@@ -213,14 +231,33 @@ def _apply_board_net_names(board, renames: dict[str, str]) -> tuple[int, list[st
     return changed, warnings
 
 
-def apply_wire_names_to_board(board, *, pcbnew_module=None, specs_path=None,
-                              out_dir=None, stem=None, scheme=None,
-                              renumber=False) -> Result:
+def preview_wire_numbers(board, *, pcbnew_module=None, specs_path=None,
+                         out_dir=None, stem=None, scheme=None, renumber=False,
+                         overrides=None) -> tuple[Result, list, list]:
+    """Compute the wire table without writing any file or touching the board.
+
+    Returns (result, columns, rows) where rows are review-table dicts (endpoint
+    `key`, `wire_no`, endpoints, specs, `notes`, ...) — what the interactive
+    dialog displays between Generate rounds."""
     res = Result()
     out_dir, stem = _board_stem_and_dir(board, out_dir, stem)
     _source, _conn, harness, review_rows = _build_numbered_harness(
         board, pcbnew_module, specs_path, out_dir, stem, res,
-        reclaim_net_name_numbers=True, scheme=scheme, renumber=renumber)
+        reclaim_net_name_numbers=True, scheme=scheme, renumber=renumber,
+        overrides=overrides, dry_run=True)
+    columns, rows = build_review_rows(harness, review_rows)
+    return res, columns, rows
+
+
+def apply_wire_names_to_board(board, *, pcbnew_module=None, specs_path=None,
+                              out_dir=None, stem=None, scheme=None,
+                              renumber=False, overrides=None) -> Result:
+    res = Result()
+    out_dir, stem = _board_stem_and_dir(board, out_dir, stem)
+    _source, _conn, harness, review_rows = _build_numbered_harness(
+        board, pcbnew_module, specs_path, out_dir, stem, res,
+        reclaim_net_name_numbers=True, scheme=scheme, renumber=renumber,
+        overrides=overrides)
     write_review(harness, res.review_path, review_rows)
     if res.review_path not in res.outputs:
         res.outputs.append(res.review_path)
