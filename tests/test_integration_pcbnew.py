@@ -84,10 +84,7 @@ def test_full_pipeline_csv(tmp_dir):
         specs_path=os.path.join(FIXTURE, "harness_specs.yaml"),
         out_dir=tmp_dir, stem="it")
     assert res.wire_count == 9, res.wire_count
-    # A machine without Graphviz gets an informational "diagram not rendered"
-    # warning by design; anything else here is a real problem.
-    warnings = [w for w in res.warnings if "Graphviz" not in w]
-    assert not warnings, res.warnings
+    assert not res.warnings, res.warnings
 
     import csv
     with open(os.path.join(tmp_dir, "it_wirelist.csv"), newline="") as fh:
@@ -112,13 +109,14 @@ def test_full_pipeline_csv(tmp_dir):
     assert r["gauge"] == "14 AWG" and r["color"] == "BN"
     assert r["length_mm"] == ""
 
-    # WireViz YAML emitted too (PyYAML is present alongside real KiCad here),
-    # and with Graphviz available the diagram renders from the real board.
+    # WireViz YAML and docs are emitted too. SVG/HTML/BOM come from the bundled
+    # renderer even without Graphviz; PNG is added when Graphviz is available.
     assert any(p.endswith("it_harness.yaml") for p in res.outputs), res.outputs
     import shutil
+    exts = {os.path.splitext(p)[1] for p in res.outputs}
+    assert {".svg", ".html", ".tsv"} <= exts, res.outputs
     if shutil.which("dot"):
-        exts = {os.path.splitext(p)[1] for p in res.outputs}
-        assert {".png", ".svg", ".html"} <= exts, res.outputs
+        assert ".png" in exts, res.outputs
 
     # panel wiring diagram emitted and well-formed, with wire colors + labels
     svg_path = os.path.join(tmp_dir, "it_panel.svg")
