@@ -79,7 +79,7 @@ if __name__ == "__main__":
         print("OK wireviz yaml structure (render skipped)")
 
 
-def test_vendored_wireviz_renderer_outputs_or_cleanly_requires_graphviz():
+def test_vendored_wireviz_renderer_outputs_without_graphviz():
     h, conn = _harness()
     with tempfile.TemporaryDirectory() as td:
         path = os.path.join(td, "h.yaml")
@@ -92,18 +92,52 @@ def test_vendored_wireviz_renderer_outputs_or_cleanly_requires_graphviz():
                 p for p in old_path.split(os.pathsep)
                 if not os.path.exists(os.path.join(p, "wireviz"))
             )
-            if not shutil.which("dot"):
-                try:
-                    render_wireviz(path)
-                except RuntimeError as e:
-                    assert "Graphviz" in str(e) or "dot" in str(e)
-                else:
-                    raise AssertionError("render should require graphviz/dot")
-                return
             outs = render_wireviz(path)
         finally:
             os.environ["PATH"] = old_path
-        assert {os.path.splitext(p)[1] for p in outs} >= {".png", ".svg", ".html", ".tsv"}
+        exts = {os.path.splitext(p)[1] for p in outs}
+        assert exts >= {".svg", ".html", ".tsv"}
+        if shutil.which("dot"):
+            assert ".png" in exts
         for out in outs:
             assert os.path.exists(out) and os.path.getsize(out) > 0, out
         assert "ABB-M3" in open(os.path.join(td, "h.bom.tsv"), encoding="utf-8").read()
+
+
+def test_render_wireviz_uses_bundled_svg_renderer_without_dot():
+    import harness.wireviz as wv
+
+    h, conn = _harness()
+    old_candidates = wv._candidate_dot_paths
+    try:
+        wv._candidate_dot_paths = lambda: []
+        with tempfile.TemporaryDirectory() as td:
+            path = os.path.join(td, "h.yaml")
+            write_wireviz(h, path, components=conn.components)
+            outs = wv.render_wireviz(path)
+            exts = {os.path.splitext(p)[1] for p in outs}
+            assert {".svg", ".html", ".tsv"} <= exts
+            assert ".png" not in exts
+            for out in outs:
+                assert os.path.exists(out) and os.path.getsize(out) > 0, out
+    finally:
+        wv._candidate_dot_paths = old_candidates
+
+
+def test_graphviz_dot_path_honors_explicit_dot_env():
+    from harness.wireviz import graphviz_dot_path
+
+    old_dot = os.environ.get("KICAD_PANEL_TOOLS_DOT")
+    with tempfile.TemporaryDirectory() as td:
+        fake_dot = os.path.join(td, "dot")
+        with open(fake_dot, "w", encoding="utf-8") as fh:
+            fh.write("#!/bin/sh\necho 'dot - graphviz version 1.0' >&2\nexit 0\n")
+        os.chmod(fake_dot, 0o755)
+        try:
+            os.environ["KICAD_PANEL_TOOLS_DOT"] = fake_dot
+            assert graphviz_dot_path() == fake_dot
+        finally:
+            if old_dot is None:
+                os.environ.pop("KICAD_PANEL_TOOLS_DOT", None)
+            else:
+                os.environ["KICAD_PANEL_TOOLS_DOT"] = old_dot

@@ -59,10 +59,10 @@ knows those.
 ## Rendering diagrams
 
 The plugin now bundles a WireViz-compatible renderer for the YAML it emits, so
-**Generate harness docs** can write `*_harness.png`, `.svg`, `.html`, and
-`.bom.tsv` without installing the upstream WireViz Python package. Image
-rendering still needs Graphviz `dot` on the KiCad machine. If `dot` is not
-installed, the YAML is still written and can be rendered elsewhere.
+**Generate harness docs** can write `*_harness.svg`, `.html`, and `.bom.tsv`
+without installing the upstream WireViz Python package or Graphviz. If Graphviz
+`dot` is available, the plugin also writes `*_harness.png` and uses Graphviz for
+the SVG layout.
 
 ```
 # Optional: install the full upstream WireViz CLI; the plugin uses it when found.
