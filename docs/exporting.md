@@ -84,11 +84,11 @@ old rows.
 
 ## Rendering the WireViz diagram
 
-**Generate harness docs** always emits the WireViz YAML and, when Graphviz
-`dot` is installed, renders it directly via the bundled renderer (or the
-upstream `wireviz` CLI when it is available). If Graphviz is missing, the
-result dialog says so — install it and rerun to get the rendered outputs.
-The CLI route can do the same with `--render-wireviz`:
+**Generate harness docs** always emits the WireViz YAML and rendered docs. A
+PCM-only install writes SVG, HTML, and BOM outputs via the bundled renderer. If
+Graphviz `dot` is available, the plugin also writes PNG output and can use the
+upstream `wireviz` renderer when it is available. The CLI route can do the same
+with `--render-wireviz`:
 
 ```
 python -m harness design.net.xml --wireviz design_harness.yaml --render-wireviz
