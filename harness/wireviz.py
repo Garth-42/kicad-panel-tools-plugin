@@ -6,11 +6,34 @@ import importlib.util
 import os
 import shutil
 import subprocess
+import sys
 
 from .yamlio import import_yaml
 from ._vendor import wireviz_renderer
 
 _OUTPUT_EXTS = (".png", ".svg", ".html", ".bom.tsv")
+
+
+class GraphvizDotNotFound(RuntimeError):
+    """Raised when WireViz is importable but Graphviz ``dot`` is unavailable."""
+
+
+def graphviz_dot_path() -> str | None:
+    """Return the Graphviz ``dot`` executable visible to this Python process."""
+    return shutil.which("dot")
+
+
+def graphviz_missing_message() -> str:
+    """Explain why WireViz rendering needs more than the Python package."""
+    path = os.environ.get("PATH") or "<empty>"
+    return (
+        "Graphviz 'dot' not found on this Python process PATH. "
+        "Installing the WireViz Python package makes `import wireviz` work, "
+        "but WireViz still shells out to Graphviz to draw PNG/SVG/HTML diagrams. "
+        "Install Graphviz (graphviz.org) and make sure its `dot` executable is "
+        f"visible to KiCad's Python interpreter. sys.executable={sys.executable!r}; "
+        f"PATH={path!r}"
+    )
 
 
 def _expected_outputs(yaml_path: str) -> list[str]:
@@ -74,6 +97,9 @@ def render_wireviz(yaml_path: str) -> list[str]:
     this project. All paths require Graphviz ``dot`` for image generation.
     """
     yaml_path = os.path.abspath(yaml_path)
+    if graphviz_dot_path() is None:
+        raise GraphvizDotNotFound(graphviz_missing_message())
+
     for renderer in (_render_with_wireviz_api, _render_with_wireviz_cli):
         rendered = renderer(yaml_path)
         if rendered is not None:

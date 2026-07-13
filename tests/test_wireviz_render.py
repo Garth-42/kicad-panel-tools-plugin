@@ -107,3 +107,23 @@ def test_vendored_wireviz_renderer_outputs_or_cleanly_requires_graphviz():
         for out in outs:
             assert os.path.exists(out) and os.path.getsize(out) > 0, out
         assert "ABB-M3" in open(os.path.join(td, "h.bom.tsv"), encoding="utf-8").read()
+
+
+def test_render_wireviz_explains_import_wireviz_is_not_enough_without_dot():
+    from harness.wireviz import GraphvizDotNotFound, render_wireviz
+
+    old_path = os.environ.get("PATH", "")
+    try:
+        os.environ["PATH"] = ""
+        try:
+            render_wireviz("/tmp/example_harness.yaml")
+        except GraphvizDotNotFound as e:
+            msg = str(e)
+        else:
+            raise AssertionError("render should require graphviz/dot")
+    finally:
+        os.environ["PATH"] = old_path
+
+    assert "import wireviz" in msg
+    assert "Graphviz 'dot' not found" in msg
+    assert "KiCad's Python interpreter" in msg
