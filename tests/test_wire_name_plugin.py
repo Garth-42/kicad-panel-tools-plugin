@@ -62,8 +62,28 @@ def test_reapplying_wire_names_never_touches_pads_and_is_stable():
         assert res2.wire_count == 3
 
 
+def test_renumber_reapplies_fresh_names_to_already_renamed_nets():
+    """The explicit escape hatch from the stability above: renumber=True must
+    treat nets already named their numbers as fresh, reassign with the picked
+    scheme, and rename the board nets again — still without touching pads."""
+    with tempfile.TemporaryDirectory() as td:
+        board = mock.sample_board()
+        pads_before = _pad_numbers(board)
+        apply_wire_names_to_board(board, pcbnew_module=mock, out_dir=td, stem="p")
+
+        res = apply_wire_names_to_board(board, pcbnew_module=mock, out_dir=td,
+                                        stem="p", scheme="srcdst", renumber=True)
+        pad_nets = {pad.GetNetname() for fp in board.GetFootprints()
+                    for pad in fp.Pads()}
+        assert res.scheme == "srcdst"
+        assert res.wire_count == 3
+        assert pad_nets == {"/X1:1--M1:U", "/X1:2--M1:V", "/X1:3--KM1:A1"}
+        assert _pad_numbers(board) == pads_before, "renumber renamed a pad"
+
+
 if __name__ == "__main__":
     test_wire_names_are_applied_to_board_nets()
     test_reapplying_wire_names_never_touches_pads_and_is_stable()
+    test_renumber_reapplies_fresh_names_to_already_renamed_nets()
     print("OK wire name plugin: board nets renamed from generated wire numbers; "
-          "reapply is stable and never touches pad numbers")
+          "reapply is stable and never touches pad numbers; renumber reassigns")

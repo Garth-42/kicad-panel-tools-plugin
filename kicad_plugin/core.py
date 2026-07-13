@@ -23,6 +23,7 @@ class Result:
     outputs: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
     review_path: str = ""
+    scheme: str = ""       # numbering scheme this run actually used
 
 
 def _board_stem_and_dir(board, out_dir, stem):
@@ -39,7 +40,12 @@ def _board_stem_and_dir(board, out_dir, stem):
 
 
 def _build_numbered_harness(board, pcbnew_module, specs_path, out_dir, stem, res,
-                            reclaim_net_name_numbers=False):
+                            reclaim_net_name_numbers=False, scheme=None,
+                            renumber=False):
+    """`scheme` overrides the spec file's `numbering:` for this run only;
+    `renumber` discards persisted numbers (store + review `wire_no`) so the
+    scheme reassigns everything from scratch. Explicit `nets:` numbers and
+    intrinsic cable-core labels still win — they aren't persistence."""
     source = KicadBoardSource.from_board(board, pcbnew_module)
     conn = source.load()
 
@@ -53,15 +59,29 @@ def _build_numbered_harness(board, pcbnew_module, specs_path, out_dir, stem, res
         except Exception as e:
             res.warnings.append(f"specs '{os.path.basename(specs_path)}' not loaded: {e}")
 
-    scheme = (getattr(specs, "numbering", "") or "global")
-    numberer = SCHEMES.get(scheme, SCHEMES["global"])()
+    spec_scheme = (getattr(specs, "numbering", "") or "global")
+    if scheme is not None and scheme not in SCHEMES:
+        res.warnings.append(f"unknown numbering scheme {scheme!r}; "
+                            f"using {spec_scheme!r}")
+        scheme = None
+    res.scheme = scheme or (spec_scheme if spec_scheme in SCHEMES else "global")
+    if scheme and scheme != spec_scheme:
+        specs_name = os.path.basename(specs_path) if specs_path else DEFAULT_SPECS_NAME
+        res.warnings.append(
+            f"numbering scheme '{scheme}' picked for this run only; set "
+            f"'numbering: {scheme}' in {specs_name} to make it permanent")
+    numberer = SCHEMES[res.scheme]()
     review_csv = review_path(out_dir, stem)
     res.review_path = review_csv
     review_rows, review_warns = load_review(review_csv)
     res.warnings.extend(review_warns)
+    if renumber:
+        # A renumber must not resurrect old numbers via the review table; every
+        # other edited column (notes, gauge, custom ones, ...) is kept.
+        review_rows = {k: dict(row, wire_no="") for k, row in review_rows.items()}
 
     store = WireNumberStore(os.path.join(out_dir, WIRE_NUMBERS_NAME))
-    known = store.load()
+    known = {} if renumber else store.load()
     known.update(review_numbers(review_rows))
     if reclaim_net_name_numbers:
         # After "apply wire numbers to net names", the store is keyed by the
@@ -79,7 +99,10 @@ def _build_numbered_harness(board, pcbnew_module, specs_path, out_dir, stem, res
     res.warnings.extend(warns)
     res.warnings.extend(apply_review(harness, review_rows))
     res.wire_count = len(harness.wires)
-    store.save(collect_numbers(harness))
+    # On a renumber the store is rewritten, not merged: keeping entries for
+    # absent nets would let a retired number collide with a freshly issued one
+    # the day that net returns.
+    store.save(collect_numbers(harness), keep_existing=not renumber)
     if store.warning:
         res.warnings.append(store.warning)
     else:
@@ -191,12 +214,13 @@ def _apply_board_net_names(board, renames: dict[str, str]) -> tuple[int, list[st
 
 
 def apply_wire_names_to_board(board, *, pcbnew_module=None, specs_path=None,
-                              out_dir=None, stem=None) -> Result:
+                              out_dir=None, stem=None, scheme=None,
+                              renumber=False) -> Result:
     res = Result()
     out_dir, stem = _board_stem_and_dir(board, out_dir, stem)
     _source, _conn, harness, review_rows = _build_numbered_harness(
         board, pcbnew_module, specs_path, out_dir, stem, res,
-        reclaim_net_name_numbers=True)
+        reclaim_net_name_numbers=True, scheme=scheme, renumber=renumber)
     write_review(harness, res.review_path, review_rows)
     if res.review_path not in res.outputs:
         res.outputs.append(res.review_path)
@@ -216,12 +240,14 @@ def apply_wire_names_to_board(board, *, pcbnew_module=None, specs_path=None,
 
 def generate_harness_docs(board, *, pcbnew_module=None, specs_path=None,
                           out_dir=None, stem=None, emit_wireviz=True,
-                          render_wireviz=True) -> Result:
+                          render_wireviz=True, scheme=None,
+                          renumber=False) -> Result:
     res = Result()
     out_dir, stem = _board_stem_and_dir(board, out_dir, stem)
 
     source, conn, harness, review_rows = _build_numbered_harness(
-        board, pcbnew_module, specs_path, out_dir, stem, res)
+        board, pcbnew_module, specs_path, out_dir, stem, res,
+        scheme=scheme, renumber=renumber)
 
     # 4) outputs, written next to the board
     csv_path = os.path.join(out_dir, f"{stem}_wirelist.csv")

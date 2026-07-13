@@ -19,6 +19,10 @@ A dialog reports the wire count, output paths, and any warnings. Next to your
 
 The plugin auto-loads `harness_specs.yaml` if it sits next to the board.
 
+The result dialog also has a **numbering scheme** picker and a **Renumber from
+Scratch** button, so you can tune the numbering rule without editing YAML —
+see [Trying out a different numbering rule](#trying-out-a-different-numbering-rule).
+
 ## From the command line (netlist route)
 
 ```
@@ -28,9 +32,11 @@ python -m harness design.net.xml --specs harness_specs.yaml \
 ```
 
 Useful flags: `--numbering global|cable|net|srcdst|group` (overrides the spec
-file's choice), `--numbers PATH` (relocate the wire-number store),
-`--review PATH` (load and rewrite an editable review CSV), `--no-persist`
-(don't read/write the JSON store), `--no-autonumber`.
+file's choice; without it the spec file's `numbering:` is used),
+`--renumber` (discard persisted numbers and reassign from scratch — see below),
+`--numbers PATH` (relocate the wire-number store), `--review PATH` (load and
+rewrite an editable review CSV), `--no-persist` (don't read/write the JSON
+store), `--no-autonumber`.
 
 There's also a headless board run, using KiCad's own Python:
 
@@ -118,3 +124,31 @@ labels (`W5-L1`) always win over the store. For normal manual changes, prefer
 editing `<board>_wire_review.csv`; the plugin applies those numbers and then
 updates `wire_numbers.json`. Commit `wire_numbers.json` to version control —
 it's what makes the numbers on your printed labels stay true across revisions.
+
+## Trying out a different numbering rule
+
+The persistence above deliberately means that changing the numbering scheme
+does **nothing** by itself — existing numbers always win. To iterate on the
+rule before committing to it:
+
+1. Run **Generate harness docs**.
+2. In the result dialog, pick a scheme from the **Numbering scheme** dropdown
+   and click **Renumber from Scratch** (it asks for confirmation).
+3. The docs regenerate with every wire freshly numbered by that scheme;
+   repeat until the numbers look right.
+4. Put the winning scheme in the spec file (`numbering: <scheme>`) — a picked
+   scheme applies to that dialog session only, and the dialog reminds you of
+   this in its warnings.
+
+The CLI equivalent is `--numbering <scheme> --renumber`.
+
+Renumbering discards `wire_numbers.json` (including entries for nets currently
+absent from the design) and clears the review table's `wire_no` column; other
+review edits — `notes`, gauge/color overrides, custom columns — survive.
+Explicit `nets:` numbers and intrinsic cable-core labels are unaffected. Do
+this tuning **before** printing labels or running *Apply wire numbers to net
+names*: after a renumber, anything already printed or exported no longer
+matches. In particular, if you renumber after applying names to board nets, a
+later *Update PCB from Schematic* restores the schematic's net names, which no
+longer match the reset store, so numbers get reassigned once more — settle on
+the rule first, then apply.
