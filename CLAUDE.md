@@ -160,7 +160,9 @@ Still only mock-verified:
 - `>2`-endpoint nets (e.g. shared GND) expand as a **star** from node[0] (warned). Board
   length is left blank on star legs (the summed track length spans the whole net). Revisit
   if daisy-chain/explicit routing is needed.
-- Plugin uses the numbering scheme from the spec file; no in-dialog picker.
+- Renumbering after "Apply wire numbers to net names" + a later schematic
+  re-sync reassigns once more (the reset store is keyed by the renamed names).
+  Fix would be net-name-independent stable ids (FREECAD_ROADMAP §7 territory).
 
 ## Wire-number persistence (`persist.py`)
 
@@ -175,6 +177,15 @@ returning net gets its old number back. Fresh assignment iterates wires sorted b
 following ingest iteration order — produced different number↔net pairings on two
 machines before). The plugin does this automatically; the CLI has `--numbers PATH`
 and `--no-persist`. A corrupt/unwritable store warns and never blocks the CSV.
+
+**Renumber from scratch** (dialog scheme picker + button; CLI `--renumber`;
+`renumber=True` in `kicad_plugin/core.py`) is the deliberate escape hatch from
+stickiness: it skips loading the store, blanks the review table's `wire_no`
+column (other edits survive), and REWRITES the store (`keep_existing=False`,
+dropping absent-net entries that could later collide with fresh numbers). A
+scheme picked in the dialog (`scheme=` param) beats the spec's `numbering:` for
+that run only and warns to make it permanent; without `renumber` it changes
+nothing, since persisted numbers win. Locked in by `tests/test_renumber.py`.
 
 ## Roadmap
 

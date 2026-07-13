@@ -18,29 +18,39 @@ def main(argv=None):
     p.add_argument("--wireviz", help="also emit a WireViz YAML to this path")
     p.add_argument("--render-wireviz", action="store_true",
                    help="render WireViz PNG/SVG/HTML/BOM outputs after writing YAML")
-    p.add_argument("--numbering", choices=list(SCHEMES), default="global",
-                   help="wire-numbering scheme: global | cable | net (IEC equipotential) | srcdst")
+    p.add_argument("--numbering", choices=list(SCHEMES), default=None,
+                   help="wire-numbering scheme: global | cable | net (IEC equipotential)"
+                        " | srcdst | group (default: the spec file's 'numbering:', else global)")
     p.add_argument("--no-autonumber", action="store_true", help="do not auto-assign wire numbers")
     p.add_argument("--numbers", metavar="JSON",
                    help=f"wire-number store (default: {WIRE_NUMBERS_NAME} next to the netlist)")
     p.add_argument("--no-persist", action="store_true",
                    help="do not load/save the wire-number store")
+    p.add_argument("--renumber", action="store_true",
+                   help="discard persisted wire numbers (store + review wire_no column)"
+                        " and reassign everything with the chosen scheme")
     p.add_argument("--review", metavar="CSV",
                    help="editable wire review CSV to load and rewrite")
     args = p.parse_args(argv)
 
     conn = KicadNetlistSource(args.netlist).load()
     specs = SpecStore.from_file(args.specs) if args.specs else SpecStore()
-    numberer = SCHEMES[args.numbering]()
+    spec_scheme = specs.numbering if specs.numbering in SCHEMES else ""
+    numberer = SCHEMES[args.numbering or spec_scheme or "global"]()
 
     review_rows, review_warnings = load_review(args.review) if args.review else ({}, [])
+    if args.renumber:
+        # Fresh numbers must not be resurrected via the review table; the
+        # other edited columns (notes, gauge, ...) are kept.
+        review_rows = {k: dict(row, wire_no="") for k, row in review_rows.items()}
 
     store = None
     known: dict = {}
     if not args.no_persist and not args.no_autonumber:
         store = WireNumberStore(args.numbers or os.path.join(
             os.path.dirname(os.path.abspath(args.netlist)), WIRE_NUMBERS_NAME))
-        known = store.load()
+        if not args.renumber:
+            known = store.load()
     known.update(review_numbers(review_rows))
 
     harness, warnings = build_harness(conn, specs,
@@ -51,7 +61,9 @@ def main(argv=None):
     warnings.extend(apply_review(harness, review_rows))
 
     if store is not None:
-        store.save(collect_numbers(harness))
+        # A renumber rewrites the store instead of merging, dropping entries
+        # for absent nets (a kept one could collide with a fresh number later).
+        store.save(collect_numbers(harness), keep_existing=not args.renumber)
         if store.warning:
             warnings.append(store.warning)
         else:
