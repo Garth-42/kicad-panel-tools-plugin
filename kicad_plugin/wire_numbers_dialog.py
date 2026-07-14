@@ -71,15 +71,17 @@ def run_wire_numbers_dialog(board, pcbnew_module, specs_path=None):
 
     scheme_choice = wx.Choice(panel, choices=list(SCHEMES))
     scheme_choice.SetStringSelection(res.scheme if res.scheme in SCHEMES else "global")
+    scheme_choice.SetToolTip("Pick a numbering scheme to renumber the table with "
+                             "it right away. Numbers you typed stay pinned.")
     generate = wx.Button(panel, label="Generate")
-    generate.SetToolTip("Reassign every wire number with the selected scheme. "
+    generate.SetToolTip("Re-roll every wire number with the selected scheme. "
                         "Numbers you typed into the table stay pinned; clear a "
                         "cell to unpin it.")
     help_text = wx.StaticText(
         panel,
-        label=("Edit wire_no/notes directly, or pick a scheme and Generate to "
-               "renumber. Nothing touches the board or any file until "
-               "Apply && Finish."))
+        label=("Edit wire_no/notes directly, or pick a scheme to renumber the "
+               "table with it (Generate re-rolls the current scheme). Nothing "
+               "touches the board or any file until Apply && Finish."))
 
     grid = gridlib.Grid(panel)
     grid.CreateGrid(max(len(rows), 1), len(columns))
@@ -151,6 +153,13 @@ def run_wire_numbers_dialog(board, pcbnew_module, specs_path=None):
         dlg.EndModal(wx.ID_OK)
 
     generate.Bind(wx.EVT_BUTTON, on_generate)
+    # The scheme dropdown looks like it controls numbering, so make it: picking
+    # a scheme renumbers immediately (same as Generate). Without this the choice
+    # only takes effect on the next Generate click — so changing the scheme and
+    # clicking Apply && Finish silently applies the *persisted* numbers (the
+    # previously-generated scheme wins), which reads as "the prefix won't come
+    # back". on_generate ignores its event arg, so it serves both.
+    scheme_choice.Bind(wx.EVT_CHOICE, on_generate)
     apply_btn = wx.Button(panel, wx.ID_OK, "Apply && Finish")
     apply_btn.SetToolTip("Write wire_numbers.json + the review CSV and rename "
                          "the board nets to these numbers")

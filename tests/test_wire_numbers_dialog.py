@@ -12,7 +12,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from kicad_plugin.core import (apply_wire_names_to_board,  # noqa: E402
-                               preview_wire_numbers)
+                               generate_harness_docs, preview_wire_numbers)
 from kicad_plugin.wire_numbers_dialog import (collect_overrides,  # noqa: E402
                                               commit_overrides, merge_overrides)
 from harness.review import EDITABLE_COLUMNS  # noqa: E402
@@ -77,9 +77,45 @@ def test_commit_applies_exactly_the_approved_table():
             assert "field check" in fh.read()
 
 
+def test_scheme_change_renumbers_over_persisted_numbers():
+    # The dialog binds the scheme dropdown to a renumber-preview, so picking a
+    # new scheme takes effect over numbers persisted under an earlier scheme —
+    # what you see is what Apply writes. (Before, only the Generate button
+    # renumbered; changing the scheme and clicking Apply re-applied the OLD
+    # persisted numbers, which read as "the new scheme's prefix won't come back".)
+    with tempfile.TemporaryDirectory() as td:
+        board = mock.sample_board()
+        # a prior run persists global numbers (bare digits) to wire_numbers.json
+        generate_harness_docs(board, pcbnew_module=mock, out_dir=td, stem="p",
+                              emit_wireviz=False)
+        # dialog opens: the persisted global numbers are shown untouched
+        _res, _cols, opened = preview_wire_numbers(board, pcbnew_module=mock,
+                                                   out_dir=td, stem="p")
+        assert all(r["wire_no"].isdigit() for r in opened), opened
+
+        # picking 'srcdst' regenerates immediately (the dropdown -> renumber),
+        # so the table now shows endpoint-derived numbers, not the persisted ones
+        _res, _cols, picked = preview_wire_numbers(
+            board, pcbnew_module=mock, out_dir=td, stem="p",
+            scheme="srcdst", renumber=True, overrides={})
+        assert all(":" in r["wire_no"] for r in picked), picked
+
+        # Apply & Finish commits exactly that table onto the board net names
+        apply_wire_names_to_board(
+            board, pcbnew_module=mock, out_dir=td, stem="p",
+            scheme="srcdst", renumber=True, overrides=commit_overrides({}, picked))
+        pad_nets = {pad.GetNetname() for fp in board.GetFootprints()
+                    for pad in fp.Pads()}
+        # the persisted global names are gone; the srcdst names are on the board
+        assert not any(n.lstrip("/").isdigit() for n in pad_nets), pad_nets
+        assert any(":" in n for n in pad_nets), pad_nets
+
+
 if __name__ == "__main__":
     test_preview_is_a_pure_dry_run()
     test_overrides_pin_numbers_through_generate_rounds()
     test_commit_applies_exactly_the_approved_table()
+    test_scheme_change_renumbers_over_persisted_numbers()
     print("OK wire numbers dialog: preview is dry, edits pin through renumber, "
-          "commit applies the approved table to the board")
+          "commit applies the approved table to the board, and a scheme change "
+          "renumbers over persisted numbers")

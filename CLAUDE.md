@@ -199,7 +199,12 @@ since persisted numbers win. Locked in by `tests/test_renumber.py`.
 
 The "Generate wire numbers" action opens a modal editor BEFORE anything is
 generated: scheme dropdown + wire table + Generate (preview a renumber) +
-Apply & Finish (commit). Every Generate round calls
+Apply & Finish (commit). **Changing the scheme dropdown regenerates immediately**
+(the `wx.EVT_CHOICE` binding calls the same `on_generate` handler), so what you
+see is what Apply writes — without it the dropdown only took effect on the next
+Generate click, so picking a scheme and clicking Apply silently re-applied the
+*persisted* numbers (the previously-generated scheme won; e.g. cable prefixes
+wouldn't come back). Every Generate round calls
 `core.preview_wire_numbers` — a pure dry run (`dry_run=True`, no store write,
 no rename). User cell edits become `overrides` ({wire_key: {col: value}});
 pinned `wire_no` values survive renumbers, a cleared cell unpins. Commit calls
